@@ -39,6 +39,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 SECRET = os.environ.get("SECRET_KEY", "elden_ring")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 os.makedirs("user_profiles", exist_ok=True)
 
@@ -247,15 +248,12 @@ if MONITORING_ENABLED and health_checker:
         except Exception as e:
             return False, {"status": "disconnected", "error": str(e)}
     
-    # Ollama health check
-    def check_ollama() -> tuple[bool, dict]:
-        """Check Ollama connectivity."""
-        try:
-            import requests
-            resp = requests.get("http://localhost:11434/api/tags", timeout=2)
-            return resp.status_code == 200, {"status": "connected"}
-        except Exception as e:
-            return False, {"status": "disconnected", "error": str(e)}
+    # Gemini health check
+    def check_gemini() -> tuple[bool, dict]:
+        """Check Gemini API key is configured."""
+        if GEMINI_API_KEY:
+            return True, {"status": "configured"}
+        return False, {"status": "missing API key"}
     
     # ChromaDB health check
     def check_chromadb() -> tuple[bool, dict]:
@@ -269,7 +267,7 @@ if MONITORING_ENABLED and health_checker:
             return False, {"status": "disconnected", "error": str(e)}
     
     health_checker.register("supabase", check_supabase, critical=True)
-    health_checker.register("ollama", check_ollama, critical=True)
+    health_checker.register("gemini", check_gemini, critical=False)
     health_checker.register("chromadb", check_chromadb, critical=False)
 
 @app.get("/health", tags=["monitoring"])
@@ -457,14 +455,8 @@ async def health_check():
     """Check system health and service availability."""
     services = {}
     
-    # Check Ollama
-    try:
-        import ollama
-        ollama.list()
-        services["ollama"] = "healthy"
-    except Exception as e:
-        services["ollama"] = f"unavailable: {str(e)[:30]}"
-        logger.warning(f"Ollama unavailable: {e}")
+    # Check Gemini
+    services["gemini"] = "healthy" if GEMINI_API_KEY else "missing API key"
     
     # Check Supabase
     services["supabase"] = "healthy" if USE_SUPABASE else "unavailable (using local fallback)"
@@ -1443,29 +1435,14 @@ async def chat(request: Request):
                 pass
         
         def generate():
-            """Generate chat response stream."""
+            """Generate chat response stream using Gemini."""
             try:
-                import ollama
-                
-                # Check if Ollama is available before proceeding
-                try:
-                    ollama.list()
-                except Exception as ollama_err:
-                    yield "⚠️ **AI Service Unavailable**\n\n"
-                    yield "The AI chat service (Ollama) is not running. To fix this:\n\n"
-                    yield "1. **Install Ollama** (if not installed):\n"
-                    yield "   - Download from: https://ollama.ai\n"
-                    yield "   - Install and restart your terminal\n\n"
-                    yield "2. **Start Ollama**:\n"
-                    yield "   - Run: `ollama serve` in a terminal\n"
-                    yield "   - Or start the Ollama app\n\n"
-                    yield "3. **Pull the model** (first time only):\n"
-                    yield "   - Run: `ollama pull llama3.1:8b`\n\n"
-                    yield f"Error details: {str(ollama_err)[:100]}\n"
-                    logger.error(f"Ollama unavailable: {ollama_err}")
+                if not GEMINI_API_KEY:
+                    yield "⚠️ **AI Service Unavailable** — Gemini API key not configured."
                     return
                 
-                from model.model import MODEL_NAME, build_full_context
+                import google.generativeai as genai
+                from model.model import build_full_context
                 from model.constraint_graph import ConstraintGraph
                 from model.validation import parse_profile as _parse_profile
                 from model.meal_swap import detect_swap_request, find_swaps, format_swap_block
@@ -1492,13 +1469,6 @@ async def chat(request: Request):
                 
                 _final_message = f"{_swap_prefix}\n\n{message}" if _swap_prefix else message
                 
-                messages = [
-                    {"role": "system", "content": system_full},
-                    {"role": "user", "content": seed_message},
-                    {"role": "assistant", "content": "Understood. I have your full profile, state analysis, protocol priorities, and nutrition data loaded."},
-                    {"role": "user", "content": _final_message},
-                ]
-                
                 # Extract feedback from message
                 try:
                     feedback = user_state.parse_feedback_from_text(message)
@@ -1508,14 +1478,25 @@ async def chat(request: Request):
                 except Exception as e:
                     logger.warning(f"Feedback processing failed: {e}")
                 
-                # Stream response
-                stream = ollama.chat(model=MODEL_NAME, messages=messages, stream=True)
-                for chunk in stream:
-                    content = chunk["message"]["content"]
-                    if content:
-                        yield content
+                # Build Gemini model with system instruction
+                genai.configure(api_key=GEMINI_API_KEY)
+                gemini_model = genai.GenerativeModel(
+                    "gemini-1.5-flash",
+                    system_instruction=system_full,
+                )
                 
-                logger.info(f"✓ Chat completed: {username}")
+                # Seed the conversation history then send the real message
+                chat_session = gemini_model.start_chat(history=[
+                    {"role": "user", "parts": [seed_message]},
+                    {"role": "model", "parts": ["Understood. I have your full profile, state analysis, protocol priorities, and nutrition data loaded."]},
+                ])
+                
+                response = chat_session.send_message(_final_message, stream=True)
+                for chunk in response:
+                    if chunk.text:
+                        yield chunk.text
+                
+                logger.info(f"✓ Gemini chat completed: {username}")
             
             except ImportError as e:
                 logger.error(f"Import error in chat: {e}")
