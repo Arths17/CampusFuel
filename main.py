@@ -1748,11 +1748,21 @@ async def startup_event():
     logger.info("="*60)
     logger.info(f"  Ollama: Available")
     logger.info(f"  Supabase: {'Connected' if USE_SUPABASE else 'Unavailable (using local fallback)'}")
-    logger.info(f"  Docs: http://localhost:8000/api/docs")
+    base_url = os.environ.get("BASE_URL", "")
+    logger.info(f"  Docs: {base_url}/api/docs")
     logger.info("="*60)
     # Pre-load food DB in background so first search is instant
     import threading
     threading.Thread(target=_load_food_db, daemon=True).start()
+
+@app.get("/")
+def root():
+    return {
+        "status": "ok",
+        "service": "HealthOS API",
+        "env": os.environ.get("ENV", "prod"),
+        "docs": "/api/docs",
+    }
 
 @app.on_event("shutdown")
 async def shutdown_event():
