@@ -360,7 +360,14 @@ export function AppProvider({ children }) {
 
   const saveWaterIntake = async (glasses) => {
     const token = user?.token;
-    if (!token) return { success: false, error: "Not authenticated" };
+    if (!token) {
+      // Still update local state even without auth so UI is interactive
+      setWaterIntakeState(Number(glasses));
+      return { success: false, error: "Not authenticated" };
+    }
+
+    // Optimistically update state immediately for instant UI feedback
+    setWaterIntakeState(Number(glasses));
 
     const date = new Date().toISOString().split("T")[0];
     try {
