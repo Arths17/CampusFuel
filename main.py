@@ -18,6 +18,7 @@ import re
 import sys
 import json
 import bcrypt
+import httpx
 import jwt as _jwt
 import logging
 from typing import cast as _cast, Optional
