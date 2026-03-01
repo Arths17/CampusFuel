@@ -41,12 +41,6 @@ logger = logging.getLogger(__name__)
 SECRET = os.environ.get("SECRET_KEY", "elden_ring")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
-os.makedirs("user_profiles", exist_ok=True)
-
-def _profile_path(username: str) -> str:
-    safe = re.sub(r"[^\w\-]", "_", username.lower())
-    return os.path.join("user_profiles", f"{safe}.json")
-
 # --- Supabase (optional) ---
 try:
     from supabase import create_client
@@ -345,82 +339,7 @@ def _validate_password(password: str) -> None:
     if not (8 <= len(password) <= 128):
         raise ValidationError("Password must be 8-128 characters")
 
-def _local_login(username: str, password: str) -> tuple[bool, Optional[str], Optional[str]]:
-    """Local file-based login (fallback)."""
-    try:
-        with open("users.json", "r") as f:
-            users = json.load(f)
-        for u in users:
-            if u["username"] == username:
-                if bcrypt.checkpw(password.encode(), u["password"].encode()):
-                    return True, str(u.get("id")), None
-                return False, None, "Incorrect password"
-        return False, None, "User not found"
-    except FileNotFoundError:
-        return False, None, "No users registered yet"
-    except Exception as e:
-        logger.error(f"Local login error: {e}")
-        return False, None, "Login service unavailable"
 
-def _local_signup(username: str, password: str) -> tuple[bool, Optional[str], Optional[str]]:
-    """Local file-based signup (fallback)."""
-    try:
-        try:
-            with open("users.json", "r") as f:
-                users = json.load(f)
-        except FileNotFoundError:
-            users = []
-        
-        # Check for duplicates
-        if any(u["username"] == username for u in users):
-            return False, None, "Username already taken"
-        
-        # Create new user
-        hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-        new_id = len(users) + 1
-        users.append({"id": new_id, "username": username, "password": hashed})
-        
-        with open("users.json", "w") as f:
-            json.dump(users, f, indent=2)
-        
-        return True, str(new_id), None
-    except Exception as e:
-        logger.error(f"Local signup error: {e}")
-        return False, None, "Signup service unavailable"
-
-def _local_change_password(username: str, current_password: str, new_password: str) -> tuple[bool, Optional[str]]:
-    """Change password in local users.json store."""
-    try:
-        with open("users.json", "r") as f:
-            users = json.load(f)
-
-        updated = False
-        for user in users:
-            if user.get("username") == username:
-                if not bcrypt.checkpw(current_password.encode(), user["password"].encode()):
-                    return False, "Current password is incorrect"
-                user["password"] = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
-                updated = True
-                break
-
-        if not updated:
-            return False, "User not found"
-
-        with open("users.json", "w") as f:
-            json.dump(users, f, indent=2)
-
-        return True, None
-    except FileNotFoundError:
-        return False, "No local users found"
-    except Exception as e:
-        logger.error(f"Local change password error: {e}")
-        return False, "Password update service unavailable"
-
-def _water_path(username: str) -> str:
-    return _profile_path(username).replace(".json", "_water.json")
-
-def _workouts_path(username: str) -> str:
-    return _profile_path(username).replace(".json", "_workouts.json")
 
 # ══════════════════════════════════════════════
 # HEALTH CHECK ENDPOINT
@@ -535,48 +454,26 @@ async def login(request: Request, username: str = Form(...), password: str = For
                 raise
             return JSONResponse({"success": False, "error": str(e)}, status_code=422)
         
-        # Try Supabase first
-        if USE_SUPABASE:
-            try:
-                res = _sb.table("users").select("*").eq("username", username).execute()
-                if res.data:
-                    row = _cast(dict, res.data[0])
-                    if bcrypt.checkpw(password.encode(), row["password"].encode()):
-                        token = _make_token(username, row.get("id"))
-                        logger.info(f"✓ Login successful: {username} (Supabase)")
-                        return JSONResponse({
-                            "success": True,
-                            "token": token,
-                            "username": username,
-                            "user_id": row.get("id"),
-                        })
-                    return JSONResponse(
-                        {"success": False, "error": "Incorrect password", "error_code": "AUTH_FAILED"},
-                        status_code=401
-                    )
-                return JSONResponse(
-                    {"success": False, "error": "User not found", "error_code": "NOT_FOUND"},
-                    status_code=404
-                )
-            except Exception as e:
-                logger.warning(f"Supabase login failed: {e}, falling back to local")
-        
-        # Fallback to local
-        ok, uid, err = _local_login(username, password)
-        if ok:
-            token = _make_token(username, uid)
-            logger.info(f"✓ Login successful: {username} (local)")
-            return JSONResponse({
-                "success": True,
-                "token": token,
-                "username": username,
-                "user_id": uid,
-            })
-        
-        logger.warning(f"✗ Login failed: {username} - {err}")
+        res = _sb.table("users").select("*").eq("username", username).execute()
+        if res.data:
+            row = _cast(dict, res.data[0])
+            if bcrypt.checkpw(password.encode(), row["password"].encode()):
+                token = _make_token(username, row.get("id"))
+                logger.info(f"✓ Login successful: {username}")
+                return JSONResponse({
+                    "success": True,
+                    "token": token,
+                    "username": username,
+                    "user_id": row.get("id"),
+                })
+            return JSONResponse(
+                {"success": False, "error": "Incorrect password", "error_code": "AUTH_FAILED"},
+                status_code=401
+            )
+        logger.warning(f"✗ Login failed: {username} — not found")
         return JSONResponse(
-            {"success": False, "error": err, "error_code": "AUTH_FAILED"},
-            status_code=401
+            {"success": False, "error": "User not found", "error_code": "NOT_FOUND"},
+            status_code=404
         )
     
     except Exception as e:
@@ -627,55 +524,31 @@ async def signup(
                 raise
             return JSONResponse({"success": False, "error": str(e)}, status_code=422)
         
-        # Try Supabase first
-        if USE_SUPABASE:
-            try:
-                existing = _sb.table("users").select("id").eq("username", username).execute()
-                if existing.data:
-                    return JSONResponse(
-                        {"success": False, "error": "Username already taken", "error_code": "CONFLICT"},
-                        status_code=409,
-                    )
-                
-                hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-                res = _sb.table("users").insert({
-                    "username": username,
-                    "password": hashed,
-                }).execute()
-                
-                uid: Optional[str] = None
-                if res.data:
-                    user_row = _cast(dict, res.data[0])
-                    uid = _cast(Optional[str], user_row.get("id"))
-                token = _make_token(username, uid)
-                logger.info(f"✓ Signup successful: {username} (Supabase)")
-                return JSONResponse({
-                    "success": True,
-                    "token": token,
-                    "username": username,
-                    "user_id": uid,
-                })
-            except Exception as e:
-                logger.warning(f"Supabase signup failed: {e}, falling back to local")
+        existing = _sb.table("users").select("id").eq("username", username).execute()
+        if existing.data:
+            return JSONResponse(
+                {"success": False, "error": "Username already taken", "error_code": "CONFLICT"},
+                status_code=409,
+            )
         
-        # Fallback to local
-        ok, uid, err = _local_signup(username, password)
-        if ok:
-            token = _make_token(username, uid)
-            logger.info(f"✓ Signup successful: {username} (local)")
-            return JSONResponse({
-                "success": True,
-                "token": token,
-                "username": username,
-                "user_id": uid,
-            })
+        hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+        res = _sb.table("users").insert({
+            "username": username,
+            "password": hashed,
+        }).execute()
         
-        status_code = 409 if "already taken" in (err or "") else 400
-        logger.warning(f"✗ Signup failed: {username} - {err}")
-        return JSONResponse(
-            {"success": False, "error": err, "error_code": "SIGNUP_FAILED"},
-            status_code=status_code,
-        )
+        uid: Optional[str] = None
+        if res.data:
+            user_row = _cast(dict, res.data[0])
+            uid = _cast(Optional[str], user_row.get("id"))
+        token = _make_token(username, uid)
+        logger.info(f"✓ Signup successful: {username}")
+        return JSONResponse({
+            "success": True,
+            "token": token,
+            "username": username,
+            "user_id": uid,
+        })
     
     except Exception as e:
         logger.error(f"Signup endpoint error: {e}", exc_info=True)
@@ -811,24 +684,11 @@ async def get_water_intake(request: Request, date: Optional[str] = None):
         user_id = payload.get("user_id")
         day = date or datetime.utcnow().strftime("%Y-%m-%d")
 
-        if USE_SUPABASE and user_id:
-            try:
-                res = _sb.table("water_logs").select("glasses,date").eq("user_id", user_id).eq("date", day).execute()
-                glasses = 0
-                if res.data:
-                    entry = _cast(dict, res.data[0])
-                    glasses = int(entry.get("glasses") or 0)
-                return JSONResponse({"success": True, "date": day, "glasses": glasses})
-            except Exception as e:
-                logger.warning(f"Supabase water fetch failed: {e}, falling back to local")
-
-        try:
-            with open(_water_path(username), "r") as f:
-                water_map = json.load(f)
-        except FileNotFoundError:
-            water_map = {}
-
-        glasses = int(water_map.get(day, 0) or 0)
+        res = _sb.table("water_logs").select("glasses,date").eq("user_id", user_id).eq("date", day).execute()
+        glasses = 0
+        if res.data:
+            entry = _cast(dict, res.data[0])
+            glasses = int(entry.get("glasses") or 0)
         return JSONResponse({"success": True, "date": day, "glasses": glasses})
 
     except Exception as e:
@@ -863,27 +723,11 @@ async def save_water_intake(request: Request):
         glasses = int(body.get("glasses", 0))
         glasses = max(0, min(glasses, 30))
 
-        if USE_SUPABASE and user_id:
-            try:
-                existing = _sb.table("water_logs").select("id").eq("user_id", user_id).eq("date", day).execute()
-                if existing.data:
-                    _sb.table("water_logs").update({"glasses": glasses}).eq("user_id", user_id).eq("date", day).execute()
-                else:
-                    _sb.table("water_logs").insert({"user_id": user_id, "date": day, "glasses": glasses}).execute()
-                return JSONResponse({"success": True, "date": day, "glasses": glasses})
-            except Exception as e:
-                logger.warning(f"Supabase water save failed: {e}, falling back to local")
-
-        try:
-            with open(_water_path(username), "r") as f:
-                water_map = json.load(f)
-        except FileNotFoundError:
-            water_map = {}
-
-        water_map[day] = glasses
-        with open(_water_path(username), "w") as f:
-            json.dump(water_map, f, indent=2)
-
+        existing = _sb.table("water_logs").select("id").eq("user_id", user_id).eq("date", day).execute()
+        if existing.data:
+            _sb.table("water_logs").update({"glasses": glasses}).eq("user_id", user_id).eq("date", day).execute()
+        else:
+            _sb.table("water_logs").insert({"user_id": user_id, "date": day, "glasses": glasses}).execute()
         return JSONResponse({"success": True, "date": day, "glasses": glasses})
 
     except json.JSONDecodeError:
@@ -918,36 +762,15 @@ async def get_workouts(request: Request, start_date: Optional[str] = None, end_d
         username = payload["username"]
         user_id = payload.get("user_id")
 
-        if USE_SUPABASE and user_id:
-            try:
-                query = _sb.table("workouts").select("*").eq("user_id", user_id)
-                if start_date:
-                    query = query.gte("date", start_date)
-                if end_date:
-                    query = query.lte("date", end_date)
-                res = query.execute()
-                workouts_raw = res.data or []
-                workouts: list[dict] = [item for item in workouts_raw if isinstance(item, dict)]
-                workouts.sort(key=lambda item: str(item.get("timestamp", "")), reverse=True)
-                return JSONResponse({"success": True, "workouts": workouts})
-            except Exception as e:
-                logger.warning(f"Supabase workouts fetch failed: {e}, falling back to local")
-
-        try:
-            with open(_workouts_path(username), "r") as f:
-                workouts = json.load(f)
-        except FileNotFoundError:
-            workouts = []
-
-        workouts = [w for w in workouts if isinstance(w, dict)]
-
+        query = _sb.table("workouts").select("*").eq("user_id", user_id)
         if start_date:
-            workouts = [w for w in workouts if str(w.get("date", "")) >= start_date]
+            query = query.gte("date", start_date)
         if end_date:
-            workouts = [w for w in workouts if str(w.get("date", "")) <= end_date]
-
-        workouts.sort(key=lambda item: str(item.get("timestamp", "")), reverse=True)
-        return JSONResponse({"success": True, "workouts": workouts})
+            query = query.lte("date", end_date)
+        res = query.execute()
+        workouts_data: list[dict] = [item for item in (res.data or []) if isinstance(item, dict)]
+        workouts_data.sort(key=lambda item: str(item.get("timestamp", "")), reverse=True)
+        return JSONResponse({"success": True, "workouts": workouts_data})
 
     except Exception as e:
         logger.error(f"Get workouts error: {e}", exc_info=True)
@@ -994,23 +817,7 @@ async def log_workout(request: Request):
             "timestamp": str(body.get("timestamp") or datetime.utcnow().isoformat()),
         }
 
-        if USE_SUPABASE and user_id:
-            try:
-                _sb.table("workouts").insert({**workout, "user_id": user_id}).execute()
-                return JSONResponse({"success": True, "workout": workout})
-            except Exception as e:
-                logger.warning(f"Supabase workout save failed: {e}, falling back to local")
-
-        try:
-            with open(_workouts_path(username), "r") as f:
-                workouts = json.load(f)
-        except FileNotFoundError:
-            workouts = []
-
-        workouts.append(workout)
-        with open(_workouts_path(username), "w") as f:
-            json.dump(workouts, f, indent=2)
-
+        _sb.table("workouts").insert({**workout, "user_id": user_id}).execute()
         return JSONResponse({"success": True, "workout": workout})
 
     except json.JSONDecodeError:
@@ -1045,32 +852,7 @@ async def delete_workout(request: Request, workout_id: str):
         username = payload["username"]
         user_id = payload.get("user_id")
 
-        if USE_SUPABASE and user_id:
-            try:
-                _sb.table("workouts").delete().eq("user_id", user_id).eq("id", workout_id).execute()
-                return JSONResponse({"success": True})
-            except Exception as e:
-                logger.warning(f"Supabase workout delete failed: {e}, falling back to local")
-
-        try:
-            with open(_workouts_path(username), "r") as f:
-                workouts = json.load(f)
-        except FileNotFoundError:
-            return JSONResponse(
-                {"success": False, "error": "Workout not found", "error_code": "NOT_FOUND"},
-                status_code=404,
-            )
-
-        filtered = [w for w in workouts if str(w.get("id")) != workout_id]
-        if len(filtered) == len(workouts):
-            return JSONResponse(
-                {"success": False, "error": "Workout not found", "error_code": "NOT_FOUND"},
-                status_code=404,
-            )
-
-        with open(_workouts_path(username), "w") as f:
-            json.dump(filtered, f, indent=2)
-
+        _sb.table("workouts").delete().eq("user_id", user_id).eq("id", workout_id).execute()
         return JSONResponse({"success": True})
 
     except Exception as e:
@@ -1104,24 +886,10 @@ async def me(request: Request):
         user_id = payload.get("user_id")
         profile = {}
         
-        # Try Supabase first
-        if USE_SUPABASE and user_id:
-            try:
-                res = _sb.table("profiles").select("*").eq("user_id", user_id).execute()
-                if res.data:
-                    profile = res.data[0]
-                    logger.debug(f"Profile loaded from Supabase: {username}")
-            except Exception as e:
-                logger.warning(f"Supabase profile load failed: {e}")
-        
-        # Fallback to local
-        if not profile:
-            try:
-                with open(_profile_path(username), "r") as f:
-                    profile = json.load(f)
-                    logger.debug(f"Profile loaded from local: {username}")
-            except FileNotFoundError:
-                logger.debug(f"No profile found for: {username}")
+        if user_id:
+            res = _sb.table("profiles").select("*").eq("user_id", user_id).execute()
+            if res.data:
+                profile = res.data[0]
         
         return JSONResponse({
             "success": True,
@@ -1187,24 +955,18 @@ async def save_profile(request: Request):
                 except (ValueError, TypeError):
                     pass  # Allow non-numeric weight strings like "150 lbs"
         
-        # Try Supabase first
-        if USE_SUPABASE and user_id:
-            try:
-                existing = _sb.table("profiles").select("id").eq("user_id", user_id).execute()
-                if existing.data:
-                    _sb.table("profiles").update(data).eq("user_id", user_id).execute()
-                    logger.info(f"✓ Profile updated: {username} (Supabase)")
-                else:
-                    _sb.table("profiles").insert({**data, "user_id": user_id}).execute()
-                    logger.info(f"✓ Profile created: {username} (Supabase)")
-                return JSONResponse({"success": True})
-            except Exception as e:
-                logger.warning(f"Supabase profile save failed: {e}, falling back to local")
-        
-        # Fallback to local
-        with open(_profile_path(username), "w") as f:
-            json.dump(data, f, indent=2)
-        logger.info(f"✓ Profile saved: {username} (local)")
+        if not user_id:
+            return JSONResponse(
+                {"success": False, "error": "Not authenticated", "error_code": "AUTH_FAILED"},
+                status_code=401,
+            )
+        existing = _sb.table("profiles").select("id").eq("user_id", user_id).execute()
+        if existing.data:
+            _sb.table("profiles").update(data).eq("user_id", user_id).execute()
+            logger.info(f"✓ Profile updated: {username}")
+        else:
+            _sb.table("profiles").insert({**data, "user_id": user_id}).execute()
+            logger.info(f"✓ Profile created: {username}")
         return JSONResponse({"success": True})
     
     except json.JSONDecodeError:
@@ -1672,32 +1434,8 @@ async def log_meal(request: Request):
         if "id" not in data or not data.get("id"):
             data["id"] = str(uuid4())
         
-        # Store in Supabase or local file
-        if USE_SUPABASE and user_id:
-            try:
-                _sb.table("meals").insert({
-                    **data,
-                    "user_id": user_id,
-                }).execute()
-                logger.info(f"✓ Meal logged: {username} (Supabase)")
-                return JSONResponse({"success": True})
-            except Exception as e:
-                logger.warning(f"Supabase meal log failed: {e}, falling back to local")
-        
-        # Fallback to local storage
-        meals_path = _profile_path(username).replace(".json", "_meals.json")
-        try:
-            with open(meals_path, "r") as f:
-                meals = json.load(f)
-        except FileNotFoundError:
-            meals = []
-        
-        meals.append(data)
-        
-        with open(meals_path, "w") as f:
-            json.dump(meals, f, indent=2)
-        
-        logger.info(f"✓ Meal logged: {username} (local)")
+        _sb.table("meals").insert({**data, "user_id": user_id}).execute()
+        logger.info(f"✓ Meal logged: {username}")
         return JSONResponse({"success": True})
     
     except json.JSONDecodeError:
@@ -1731,39 +1469,11 @@ async def get_meals(request: Request, date: Optional[str] = None):
         username = payload["username"]
         user_id = payload.get("user_id")
         
-        # Try Supabase first
-        if USE_SUPABASE and user_id:
-            try:
-                query = _sb.table("meals").select("*").eq("user_id", user_id)
-                if date:
-                    query = query.eq("date", date)
-                res = query.execute()
-                return JSONResponse({
-                    "success": True,
-                    "meals": res.data or []
-                })
-            except Exception as e:
-                logger.warning(f"Supabase meals fetch failed: {e}")
-        
-        # Fallback to local
-        meals_path = _profile_path(username).replace(".json", "_meals.json")
-        try:
-            with open(meals_path, "r") as f:
-                meals = json.load(f)
-            
-            # Filter by date if provided
-            if date:
-                meals = [m for m in meals if m.get("date") == date]
-            
-            return JSONResponse({
-                "success": True,
-                "meals": meals
-            })
-        except FileNotFoundError:
-            return JSONResponse({
-                "success": True,
-                "meals": []
-            })
+        query = _sb.table("meals").select("*").eq("user_id", user_id)
+        if date:
+            query = query.eq("date", date)
+        res = query.execute()
+        return JSONResponse({"success": True, "meals": res.data or []})
     
     except Exception as e:
         logger.error(f"Get meals error: {e}", exc_info=True)
@@ -1801,43 +1511,8 @@ async def update_meal(request: Request, meal_id: str):
 
         data["id"] = meal_id
 
-        if USE_SUPABASE and user_id:
-            try:
-                _sb.table("meals").update(data).eq("user_id", user_id).eq("id", meal_id).execute()
-                logger.info(f"✓ Meal updated: {username} ({meal_id}) (Supabase)")
-                return JSONResponse({"success": True})
-            except Exception as e:
-                logger.warning(f"Supabase meal update failed: {e}, falling back to local")
-
-        meals_path = _profile_path(username).replace(".json", "_meals.json")
-        try:
-            with open(meals_path, "r") as f:
-                meals = json.load(f)
-        except FileNotFoundError:
-            meals = []
-
-        updated = False
-        for idx, meal in enumerate(meals):
-            if str(meal.get("id", "")) == meal_id or str(meal.get("timestamp", "")) == meal_id:
-                meals[idx] = {
-                    **meal,
-                    **data,
-                    "id": meal_id,
-                    "timestamp": data.get("timestamp") or meal.get("timestamp") or datetime.utcnow().isoformat(),
-                }
-                updated = True
-                break
-
-        if not updated:
-            return JSONResponse(
-                {"success": False, "error": "Meal not found", "error_code": "NOT_FOUND"},
-                status_code=404,
-            )
-
-        with open(meals_path, "w") as f:
-            json.dump(meals, f, indent=2)
-
-        logger.info(f"✓ Meal updated: {username} ({meal_id}) (local)")
+        _sb.table("meals").update(data).eq("user_id", user_id).eq("id", meal_id).execute()
+        logger.info(f"✓ Meal updated: {username} ({meal_id})")
         return JSONResponse({"success": True})
 
     except json.JSONDecodeError:
@@ -1872,39 +1547,8 @@ async def delete_meal(request: Request, meal_id: str):
         username = payload["username"]
         user_id = payload.get("user_id")
 
-        if USE_SUPABASE and user_id:
-            try:
-                _sb.table("meals").delete().eq("user_id", user_id).eq("id", meal_id).execute()
-                logger.info(f"✓ Meal deleted: {username} ({meal_id}) (Supabase)")
-                return JSONResponse({"success": True})
-            except Exception as e:
-                logger.warning(f"Supabase meal delete failed: {e}, falling back to local")
-
-        meals_path = _profile_path(username).replace(".json", "_meals.json")
-        try:
-            with open(meals_path, "r") as f:
-                meals = json.load(f)
-        except FileNotFoundError:
-            return JSONResponse(
-                {"success": False, "error": "Meal not found", "error_code": "NOT_FOUND"},
-                status_code=404,
-            )
-
-        filtered = [
-            meal for meal in meals
-            if str(meal.get("id", "")) != meal_id and str(meal.get("timestamp", "")) != meal_id
-        ]
-
-        if len(filtered) == len(meals):
-            return JSONResponse(
-                {"success": False, "error": "Meal not found", "error_code": "NOT_FOUND"},
-                status_code=404,
-            )
-
-        with open(meals_path, "w") as f:
-            json.dump(filtered, f, indent=2)
-
-        logger.info(f"✓ Meal deleted: {username} ({meal_id}) (local)")
+        _sb.table("meals").delete().eq("user_id", user_id).eq("id", meal_id).execute()
+        logger.info(f"✓ Meal deleted: {username} ({meal_id})")
         return JSONResponse({"success": True})
 
     except Exception as e:

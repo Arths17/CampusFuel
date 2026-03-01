@@ -36,12 +36,6 @@ async function parseApiResponse(response, fallbackMessage) {
   return { ok: true, data: data || {} };
 }
 
-function isNotFoundError(errorMessage) {
-  if (!errorMessage) return false;
-  const msg = String(errorMessage).toLowerCase();
-  return msg.includes("not found") || msg.includes("(404)") || msg.includes(" 404");
-}
-
 function getLastNDates(n) {
   const dates = [];
   for (let i = n - 1; i >= 0; i--) {
@@ -203,10 +197,6 @@ export function AppProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [mealsLoading, setMealsLoading] = useState(false);
 
-  const getLocalMealsKey = () => `cf-local-meals-${user?.username || "anon"}`;
-  const getLocalWaterKey = () => `cf-local-water-${user?.username || "anon"}`;
-  const getLocalWorkoutsKey = () => `cf-local-workouts-${user?.username || "anon"}`;
-
   const syncMealState = (meals) => {
     const normalizedMeals = (meals || [])
       .map((meal) => ({
@@ -219,60 +209,6 @@ export function AppProvider({ children }) {
     setTodayMeals(deriveTodayMeals(normalizedMeals));
     setWeeklyMeals(deriveWeeklyMeals(normalizedMeals));
     setActivityMetrics(deriveActivityMetrics(normalizedMeals));
-  };
-
-  const loadLocalMealsCache = () => {
-    try {
-      const raw = localStorage.getItem(getLocalMealsKey());
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  };
-
-  const saveLocalMealsCache = (meals) => {
-    try {
-      localStorage.setItem(getLocalMealsKey(), JSON.stringify(meals || []));
-    } catch {
-      // no-op if storage is unavailable
-    }
-  };
-
-  const loadLocalWaterCache = () => {
-    try {
-      return Number(localStorage.getItem(getLocalWaterKey()) || 0);
-    } catch {
-      return 0;
-    }
-  };
-
-  const saveLocalWaterCache = (glasses) => {
-    try {
-      localStorage.setItem(getLocalWaterKey(), String(glasses));
-    } catch {
-      // no-op
-    }
-  };
-
-  const loadLocalWorkoutsCache = () => {
-    try {
-      const raw = localStorage.getItem(getLocalWorkoutsKey());
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  };
-
-  const saveLocalWorkoutsCache = (entries) => {
-    try {
-      localStorage.setItem(getLocalWorkoutsKey(), JSON.stringify(entries || []));
-    } catch {
-      // no-op
-    }
   };
 
   // Initialize auth and fetch user data
@@ -352,15 +288,12 @@ export function AppProvider({ children }) {
       if (parsed.ok && parsed.data?.success !== false) {
         const serverMeals = parsed.data?.meals || [];
         syncMealState(serverMeals);
-        saveLocalMealsCache(serverMeals);
-      } else if (isNotFoundError(parsed.error)) {
-        const localMeals = loadLocalMealsCache();
-        syncMealState(localMeals);
+      } else {
+        syncMealState([]);
       }
     } catch (error) {
       console.error("Failed to refresh meals:", error);
-      const localMeals = loadLocalMealsCache();
-      syncMealState(localMeals);
+      syncMealState([]);
     } finally {
       setMealsLoading(false);
     }
@@ -392,14 +325,12 @@ export function AppProvider({ children }) {
       });
       const parsed = await parseApiResponse(response, "Failed to load water intake");
       if (parsed.ok && parsed.data?.success !== false) {
-        const glasses = Number(parsed.data?.glasses || 0);
-        setWaterIntakeState(glasses);
-        saveLocalWaterCache(glasses);
+        setWaterIntakeState(Number(parsed.data?.glasses || 0));
         return;
       }
-      setWaterIntakeState(loadLocalWaterCache());
+      setWaterIntakeState(0);
     } catch {
-      setWaterIntakeState(loadLocalWaterCache());
+      setWaterIntakeState(0);
     }
   };
 
@@ -420,21 +351,12 @@ export function AppProvider({ children }) {
       });
       const parsed = await parseApiResponse(response, "Failed to save water intake");
       if (parsed.ok && parsed.data?.success !== false) {
-        const next = Number(parsed.data?.glasses ?? glasses ?? 0);
-        setWaterIntakeState(next);
-        saveLocalWaterCache(next);
+        setWaterIntakeState(Number(parsed.data?.glasses ?? glasses ?? 0));
         return { success: true };
       }
-
-      const safe = Math.max(0, Number(glasses) || 0);
-      setWaterIntakeState(safe);
-      saveLocalWaterCache(safe);
-      return { success: true, warning: parsed.error || "Saved locally" };
+      return { success: false, error: parsed.error || "Failed to save water intake" };
     } catch (error) {
-      const safe = Math.max(0, Number(glasses) || 0);
-      setWaterIntakeState(safe);
-      saveLocalWaterCache(safe);
-      return { success: true, warning: error.message || "Saved locally" };
+      return { success: false, error: error.message || "Failed to save water intake" };
     }
   };
 
@@ -452,14 +374,12 @@ export function AppProvider({ children }) {
       });
       const parsed = await parseApiResponse(response, "Failed to load workouts");
       if (parsed.ok && parsed.data?.success !== false) {
-        const entries = parsed.data?.workouts || [];
-        setWorkouts(entries);
-        saveLocalWorkoutsCache(entries);
+        setWorkouts(parsed.data?.workouts || []);
       } else {
-        setWorkouts(loadLocalWorkoutsCache());
+        setWorkouts([]);
       }
     } catch {
-      setWorkouts(loadLocalWorkoutsCache());
+      setWorkouts([]);
     } finally {
       setWorkoutsLoading(false);
     }
@@ -484,18 +404,9 @@ export function AppProvider({ children }) {
         await fetchWorkouts(token);
         return { success: true };
       }
-
-      const fallback = { ...workoutData, id: workoutData.id || crypto.randomUUID() };
-      const next = [fallback, ...workouts];
-      setWorkouts(next);
-      saveLocalWorkoutsCache(next);
-      return { success: true, warning: parsed.error || "Saved locally" };
+      return { success: false, error: parsed.error || "Failed to save workout" };
     } catch (error) {
-      const fallback = { ...workoutData, id: workoutData.id || crypto.randomUUID() };
-      const next = [fallback, ...workouts];
-      setWorkouts(next);
-      saveLocalWorkoutsCache(next);
-      return { success: true, warning: error.message || "Saved locally" };
+      return { success: false, error: error.message || "Failed to save workout" };
     }
   };
 
@@ -516,14 +427,10 @@ export function AppProvider({ children }) {
         await fetchWorkouts(token);
         return { success: true };
       }
-    } catch {
-      // fall back below
+      return { success: false, error: parsed.error || "Failed to delete workout" };
+    } catch (error) {
+      return { success: false, error: error.message || "Failed to delete workout" };
     }
-
-    const next = workouts.filter((entry) => String(entry.id) !== String(workoutId));
-    setWorkouts(next);
-    saveLocalWorkoutsCache(next);
-    return { success: true, warning: "Deleted locally" };
   };
 
   const addMeal = async (mealData) => {
@@ -546,38 +453,10 @@ export function AppProvider({ children }) {
         await refreshMealData(token);
         return { success: true };
       }
-
-      if (isNotFoundError(parsed.error)) {
-        const fallbackMeal = {
-          ...mealData,
-          id: mealData.id || crypto.randomUUID(),
-          timestamp: mealData.timestamp || new Date().toISOString(),
-          date: mealData.date || new Date().toISOString().split("T")[0],
-          source: "local-fallback",
-        };
-        const nextMeals = [fallbackMeal, ...allMeals];
-        syncMealState(nextMeals);
-        saveLocalMealsCache(nextMeals);
-        return { success: true, warning: "Saved locally because backend meals route returned Not Found" };
-      }
-
       return { success: false, error: parsed.error || "Failed to save meal" };
     } catch (error) {
       console.error("Failed to add meal:", error);
-      const fallbackMeal = {
-        ...mealData,
-        id: mealData.id || crypto.randomUUID(),
-        timestamp: mealData.timestamp || new Date().toISOString(),
-        date: mealData.date || new Date().toISOString().split("T")[0],
-        source: "local-fallback",
-      };
-      const nextMeals = [fallbackMeal, ...allMeals];
-      syncMealState(nextMeals);
-      saveLocalMealsCache(nextMeals);
-      return {
-        success: true,
-        warning: `Saved locally: ${error.message || "Backend unavailable"}`,
-      };
+      return { success: false, error: error.message };
     }
   };
 
