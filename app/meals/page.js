@@ -81,6 +81,8 @@ function MealsPageContent() {
 
   const [showAddModal, setShowAddModal] = useState(searchParams.get('add') === 'true');
   const [editingMealId, setEditingMealId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [newMeal, setNewMeal] = useState({
     type: "Breakfast",
     time: "",
@@ -127,7 +129,7 @@ function MealsPageContent() {
   };
 
   const handleSaveMeal = async () => {
-    if (newMeal.items.length === 0) return;
+    if (newMeal.items.length === 0 || saving) return;
 
     const total = newMeal.items.reduce((acc, item) => ({
       calories: acc.calories + item.calories,
@@ -145,9 +147,14 @@ function MealsPageContent() {
       date: new Date().toISOString().split('T')[0]
     };
 
+    setSaving(true);
+    setSaveError("");
+
     const result = editingMealId
       ? await updateMealInContext(editingMealId, { ...mealData, id: editingMealId })
       : await addMealToContext(mealData);
+
+    setSaving(false);
 
     if (result.success) {
       setShowAddModal(false);
@@ -157,12 +164,14 @@ function MealsPageContent() {
         time: "",
         items: []
       });
+      setSaveError("");
     } else {
-      alert('Failed to save meal: ' + (result.error || 'Unknown error'));
+      setSaveError(result.error || 'Failed to save meal. Please try again.');
     }
   };
 
   const handleEditMeal = (meal) => {
+    setSaveError("");
     setEditingMealId(meal.id || meal.timestamp);
     setNewMeal({
       type: meal.type || "Breakfast",
@@ -325,7 +334,7 @@ function MealsPageContent() {
           {showAddModal && (
             <div className={styles.modal} onClick={() => setShowAddModal(false)}>
               <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-                <button className={styles.modalClose} onClick={() => { setShowAddModal(false); setEditingMealId(null); }}>×</button>
+                <button className={styles.modalClose} onClick={() => { setShowAddModal(false); setEditingMealId(null); setSaveError(""); }}>×</button>
                 <h2 className={styles.modalTitle}>{editingMealId ? "Edit Meal" : "Log New Meal"}</h2>
 
                 <div className={styles.formGroup}>
@@ -409,16 +418,21 @@ function MealsPageContent() {
                 </div>
 
                 <div className={styles.modalActions}>
-                  <button className={styles.cancelButton} onClick={() => { setShowAddModal(false); setEditingMealId(null); }}>
-                    Cancel
-                  </button>
-                  <button 
-                    className={styles.saveButton} 
-                    onClick={handleSaveMeal}
-                    disabled={newMeal.items.length === 0}
-                  >
-                    {editingMealId ? "Update Meal" : "Save Meal"}
-                  </button>
+                  {saveError && (
+                    <p className={styles.saveError}>{saveError}</p>
+                  )}
+                  <div className={styles.modalButtons}>
+                    <button className={styles.cancelButton} onClick={() => { setShowAddModal(false); setEditingMealId(null); setSaveError(""); }}>
+                      Cancel
+                    </button>
+                    <button 
+                      className={styles.saveButton} 
+                      onClick={handleSaveMeal}
+                      disabled={newMeal.items.length === 0 || saving}
+                    >
+                      {saving ? "Saving…" : editingMealId ? "Update Meal" : "Save Meal"}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

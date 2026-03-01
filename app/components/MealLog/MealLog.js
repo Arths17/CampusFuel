@@ -42,8 +42,8 @@ export default function MealLog() {
         ) : todayMeals.length === 0 ? (
           <div className={styles.emptyState}>No meals logged today</div>
         ) : (
-          todayMeals.map((meal, index) => (
-            <div key={meal.timestamp || index} className={styles.row}>
+          todayMeals.map((meal) => (
+            <div key={meal.id || meal.timestamp} className={styles.row}>
               <div className={styles.iconCol}>
                 <span className={styles.icon}>{mealTypeIcons[meal.type] || "🍽️"}</span>
               </div>

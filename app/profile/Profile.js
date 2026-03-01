@@ -13,9 +13,13 @@ const SELECT_OPTIONS = {
   cooking_access: ["Dorm microwave", "Shared kitchen", "Full kitchen", "None"],
 };
 
-function avatarUrl(name, username) {
-  const initials = (name || username || "?").slice(0, 2).toUpperCase();
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&background=16a34a&color=fff&size=128&bold=true`;
+function getInitials(name, username) {
+  const source = (name || username || "?").trim();
+  const words = source.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+  }
+  return source.slice(0, 2).toUpperCase();
 }
 
 function Profile() {
@@ -101,11 +105,7 @@ function Profile() {
         {/* Header */}
         <div className={styles.header}>
           <div className={styles.avatarWrapper}>
-            <img
-              src={avatarUrl(displayName, username)}
-              alt="Avatar"
-              className={styles.avatar}
-            />
+            <span className={styles.initials}>{getInitials(displayName, username)}</span>
           </div>
           <div>
             <h1 className={styles.title}>{displayName || "Your Profile"}</h1>
