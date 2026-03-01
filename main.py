@@ -327,8 +327,9 @@ def _decode_token(request: Request) -> Optional[dict]:
 
 def _is_missing_table(e) -> bool:
     """Return True if the Supabase error is a missing table (PGRST205)."""
-    return isinstance(e, dict) and e.get("code") == "PGRST205" or \
-           (hasattr(e, 'args') and e.args and "PGRST205" in str(e.args[0]))
+    if isinstance(e, dict):
+        return e.get("code") == "PGRST205"
+    return hasattr(e, 'args') and e.args and "PGRST205" in str(e.args[0])
 
 
 def _validate_username(username: str) -> None:
@@ -344,6 +345,12 @@ def _validate_password(password: str) -> None:
     if not (6 <= len(password) <= 128):
         raise ValidationError("Password must be 6-128 characters")
 
+
+def _profile_path(username: str) -> str:
+    """Get local profile file path for a user."""
+    profiles_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles")
+    os.makedirs(profiles_dir, exist_ok=True)
+    return os.path.join(profiles_dir, f"{username}_profile.json")
 
 
 # ══════════════════════════════════════════════
@@ -1204,7 +1211,12 @@ async def chat(request: Request):
                     yield "⚠️ **AI Service Unavailable** — Gemini API key not configured."
                     return
                 
-                import google.generativeai as genai
+                try:
+                    import google.generativeai as genai  # type: ignore
+                except ImportError:
+                    yield "⚠️ **AI Service Unavailable** — google-generativeai package not installed. Install with: pip install google-generativeai"
+                    return
+                
                 from model.model import build_full_context
                 from model.constraint_graph import ConstraintGraph
                 from model.validation import parse_profile as _parse_profile
