@@ -2,11 +2,13 @@
   "version": 2,
   "buildCommand": "npm run build",
   "env": {
-    "BACKEND_URL": "https://noticeably-ingenuous-keira.ngrok-free.dev"
+    "BACKEND_URL": "https://noticeably-ingenuous-keira.ngrok-free.dev",
+    "NEXT_PUBLIC_API_URL": ""
   },
   "build": {
     "env": {
-      "BACKEND_URL": "https://noticeably-ingenuous-keira.ngrok-free.dev"
+      "BACKEND_URL": "https://noticeably-ingenuous-keira.ngrok-free.dev",
+      "NEXT_PUBLIC_API_URL": ""
     }
   }
 }
