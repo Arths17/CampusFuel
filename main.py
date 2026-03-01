@@ -845,8 +845,13 @@ async def log_workout(request: Request):
             _sb.table("workouts").insert({**workout, "user_id": user_id}).execute()
         except Exception as e:
             err_str = str(e)
-            if "PGRST205" not in err_str and "schema cache" not in err_str:
-                raise
+            if "PGRST205" in err_str or "schema cache" in err_str:
+                logger.error("workouts table not configured in Supabase — run docs/database_schema.sql")
+                return JSONResponse(
+                    {"success": False, "error": "Workout storage is not set up. Run the database schema in Supabase.", "error_code": "DB_NOT_CONFIGURED"},
+                    status_code=503,
+                )
+            raise
         return JSONResponse({"success": True, "workout": workout})
 
     except json.JSONDecodeError:
@@ -1458,9 +1463,13 @@ async def log_meal(request: Request):
             logger.info(f"✓ Meal logged: {username}")
         except Exception as e:
             err_str = str(e)
-            if "PGRST205" not in err_str and "schema cache" not in err_str:
-                raise
-            logger.warning(f"meals table missing in Supabase — meal not persisted")
+            if "PGRST205" in err_str or "schema cache" in err_str:
+                logger.error("meals table not configured in Supabase — run docs/database_schema.sql")
+                return JSONResponse(
+                    {"success": False, "error": "Meal storage is not set up. Run the database schema in Supabase.", "error_code": "DB_NOT_CONFIGURED"},
+                    status_code=503,
+                )
+            raise
         return JSONResponse({"success": True})
     
     except json.JSONDecodeError:

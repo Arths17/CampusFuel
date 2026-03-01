@@ -41,7 +41,10 @@ function getLastNDates(n) {
   for (let i = n - 1; i >= 0; i--) {
     const date = new Date();
     date.setDate(date.getDate() - i);
-    dates.push(date.toISOString().split("T")[0]);
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    dates.push(`${yyyy}-${mm}-${dd}`);
   }
   return dates;
 }
@@ -63,8 +66,16 @@ function deriveWeeklyMeals(meals) {
   });
 }
 
+function getLocalDateString() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function deriveTodayMeals(meals) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = getLocalDateString();
   return meals.filter((meal) => meal.date === today);
 }
 
@@ -83,8 +94,19 @@ function deriveActivityMetrics(meals) {
 
   let currentStreak = 0;
   const cursor = new Date();
+  const getLocalKey = (d) => {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  };
+  const todayKey = getLocalKey(cursor);
+  // If no meals today yet, start counting from yesterday so the streak isn't reset
+  if (!byDate[todayKey] || byDate[todayKey].length === 0) {
+    cursor.setDate(cursor.getDate() - 1);
+  }
   while (true) {
-    const key = cursor.toISOString().split("T")[0];
+    const key = getLocalKey(cursor);
     if (byDate[key] && byDate[key].length > 0) {
       currentStreak += 1;
       cursor.setDate(cursor.getDate() - 1);
@@ -96,7 +118,10 @@ function deriveActivityMetrics(meals) {
   const weeklyTotals = deriveWeeklyMeals(meals);
   const proteinGoalDays = weeklyTotals.filter((d) => d.protein >= 108).length;
   const calorieGoalDays = weeklyTotals.filter((d) => d.calories >= 1800 && d.calories <= 2400).length;
-  const perfectWeek = weeklyTotals.every((d) => d.calories > 0);
+  // Exclude today from perfectWeek if no meals have been logged today yet
+  const today = getLocalDateString();
+  const relevantDays = weeklyTotals.filter((d) => d.date < today || (byDate[d.date] && byDate[d.date].length > 0));
+  const perfectWeek = relevantDays.length >= 6 && relevantDays.every((d) => d.calories > 0);
 
   const achievements = [
     {
@@ -156,10 +181,10 @@ function deriveActivityMetrics(meals) {
     }
   }
   if (currentStreak >= 7) {
-    milestones.push({ date: new Date().toISOString().split("T")[0], title: "Reached 7-day streak", type: "streak" });
+    milestones.push({ date: getLocalDateString(), title: "Reached 7-day streak", type: "streak" });
   }
   if (proteinGoalDays >= 3) {
-    milestones.push({ date: new Date().toISOString().split("T")[0], title: "Hit protein target 3+ days", type: "protein" });
+    milestones.push({ date: getLocalDateString(), title: "Hit protein target 3+ days", type: "protein" });
   }
 
   const sortedMilestones = milestones

@@ -20,52 +20,49 @@
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    name VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_login TIMESTAMP,
-    is_active BOOLEAN DEFAULT TRUE,
-    email_verified BOOLEAN DEFAULT FALSE,
-    phone VARCHAR(20),
-    profile_picture_url TEXT
+    id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    username   TEXT        UNIQUE NOT NULL,
+    password   TEXT        NOT NULL,   -- bcrypt hash
+    created_at TIMESTAMP   DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_created_at ON users(created_at);
-CREATE INDEX idx_users_is_active ON users(is_active);
+CREATE INDEX idx_users_username ON users(username);
 
 -- ============================================================================
--- HEALTH PROFILES
+-- PROFILES (user health & survey data)
 -- ============================================================================
 
-CREATE TABLE IF NOT EXISTS health_profiles (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    age INTEGER,
-    gender VARCHAR(50),
-    height DECIMAL(5, 2),
-    weight DECIMAL(6, 2),
-    activity_level VARCHAR(50),
-    dietary_preferences TEXT[],
-    health_goals TEXT[],
-    medical_conditions TEXT[],
-    allergies TEXT[],
-    medications TEXT[],
-    target_calories INTEGER,
-    target_protein DECIMAL(5, 2),
-    target_carbs DECIMAL(5, 2),
-    target_fats DECIMAL(5, 2),
-    bmr DECIMAL(7, 2),
-    profile_completion_percent INTEGER DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS profiles (
+    id           UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      UUID  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    -- survey / goal fields (all optional, stored as-is from the frontend)
+    age          TEXT,
+    gender       TEXT,
+    height       TEXT,
+    weight       TEXT,
+    goal         TEXT,
+    dietary_pref TEXT,
+    workout_times TEXT,
+    UNIQUE (user_id)
 );
 
-CREATE INDEX idx_health_profiles_user_id ON health_profiles(user_id);
-CREATE INDEX idx_health_profiles_updated_at ON health_profiles(updated_at);
+CREATE INDEX idx_profiles_user_id ON profiles(user_id);
+
+-- ============================================================================
+-- CHAT LOGS
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS chat_logs (
+    id         UUID      PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    UUID      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role       TEXT      NOT NULL,   -- 'user' | 'assistant'
+    content    TEXT      NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_chat_logs_user_id ON chat_logs(user_id);
+CREATE INDEX idx_chat_logs_created_at ON chat_logs(user_id, created_at);
 
 -- ============================================================================
 -- HEALTH METRICS (Time Series)
@@ -93,55 +90,25 @@ CREATE INDEX idx_health_metrics_user_id_date ON health_metrics(user_id, metric_d
 CREATE INDEX idx_health_metrics_user_id ON health_metrics(user_id);
 
 -- ============================================================================
--- MEALS AND NUTRITION
+-- MEALS (User meal logs — used by the CampusFuel API)
+-- Each row is one logged meal for a user. `items` and `total` are stored as
+-- JSONB so the full food-item list and macro totals are preserved.
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS meals (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name VARCHAR(255) NOT NULL,
-    description TEXT,
-    calories INTEGER,
-    protein DECIMAL(6, 2),
-    carbs DECIMAL(6, 2),
-    fats DECIMAL(6, 2),
-    fiber DECIMAL(6, 2),
-    preparation_time INTEGER,
-    difficulty_level VARCHAR(50),
-    tags TEXT[],
-    ingredients TEXT[],
-    instructions TEXT,
-    image_url TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    is_custom BOOLEAN DEFAULT FALSE,
-    created_by UUID REFERENCES users(id) ON DELETE SET NULL
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type        TEXT        NOT NULL,           -- Breakfast | Lunch | Dinner | Snack
+    time        TEXT,                           -- HH:MM display string
+    date        DATE        NOT NULL,           -- local calendar date
+    timestamp   TEXT,                           -- ISO-8601 for ordering
+    items       JSONB       NOT NULL DEFAULT '[]'::jsonb,  -- [{name,calories,protein,carbs,fat}]
+    total       JSONB       NOT NULL DEFAULT '{}'::jsonb   -- {calories,protein,carbs,fat}
 );
 
-CREATE INDEX idx_meals_created_at ON meals(created_at);
-CREATE INDEX idx_meals_tags ON meals USING GIN(tags);
-
--- ============================================================================
--- USER MEAL LOGS
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS meal_logs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    meal_id UUID REFERENCES meals(id) ON DELETE SET NULL,
-    meal_name VARCHAR(255),
-    calories INTEGER,
-    protein DECIMAL(6, 2),
-    carbs DECIMAL(6, 2),
-    fats DECIMAL(6, 2),
-    meal_type VARCHAR(50),
-    logged_date DATE,
-    logged_time TIME,
-    adherence_score DECIMAL(3, 2),
-    notes TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_meal_logs_user_id_date ON meal_logs(user_id, logged_date);
-CREATE INDEX idx_meal_logs_user_id ON meal_logs(user_id);
+CREATE INDEX idx_meals_user_id        ON meals(user_id);
+CREATE INDEX idx_meals_user_date      ON meals(user_id, date);
+CREATE INDEX idx_meals_timestamp      ON meals(timestamp);
 
 -- ============================================================================
 -- HEALTH GOALS AND TRACKING
@@ -172,20 +139,16 @@ CREATE INDEX idx_health_goals_status ON health_goals(status);
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS workouts (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    workout_type VARCHAR(50),
-    duration_minutes INTEGER,
-    calories_burned INTEGER,
-    intensity_level VARCHAR(50),
-    exercise_list TEXT[],
-    notes TEXT,
-    workout_date DATE,
-    workout_time TIME,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    id          UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type        TEXT    NOT NULL,           -- e.g. Strength Training, Cardio
+    duration    INTEGER NOT NULL,           -- minutes
+    notes       TEXT,
+    date        DATE    NOT NULL,           -- local calendar date
+    timestamp   TEXT                        -- ISO-8601 for ordering
 );
 
-CREATE INDEX idx_workouts_user_id_date ON workouts(user_id, workout_date);
+CREATE INDEX idx_workouts_user_id_date ON workouts(user_id, date);
 CREATE INDEX idx_workouts_user_id ON workouts(user_id);
 
 -- ============================================================================

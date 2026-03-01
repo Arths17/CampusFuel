@@ -138,13 +138,19 @@ function MealsPageContent() {
       fat: acc.fat + item.fat,
     }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
 
+    const now = new Date();
+    const localDate = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('-');
     const mealData = {
       type: newMeal.type,
-      time: newMeal.time || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      time: newMeal.time || now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
       items: newMeal.items,
       total,
-      timestamp: new Date().toISOString(),
-      date: new Date().toISOString().split('T')[0]
+      timestamp: now.toISOString(),
+      date: localDate
     };
 
     setSaving(true);

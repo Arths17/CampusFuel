@@ -23,7 +23,7 @@ export default function ProgressPage() {
     type: "Strength Training",
     duration: "",
     notes: "",
-    date: new Date().toISOString().split("T")[0],
+    date: new Date().toLocaleDateString('en-CA'),
   });
 
   useEffect(() => {
@@ -54,7 +54,7 @@ export default function ProgressPage() {
   const totalWorkouts = weeklyData.reduce((sum, d) => sum + d.workouts, 0);
   const achievements = activityMetrics.achievements || [];
   const profileMilestone = userProfile && Object.keys(userProfile).length > 0
-    ? [{ date: new Date().toISOString().split("T")[0], title: "Completed survey profile", type: "profile" }]
+    ? [{ date: new Date().toLocaleDateString('en-CA'), title: "Completed survey profile", type: "profile" }]
     : [];
   const milestones = [...profileMilestone, ...(activityMetrics.milestones || [])]
     .sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -74,7 +74,7 @@ export default function ProgressPage() {
     setWorkoutSaving(false);
     if (result?.success !== false) {
       setShowWorkoutModal(false);
-      setNewWorkout({ type: "Strength Training", duration: "", notes: "", date: new Date().toISOString().split("T")[0] });
+      setNewWorkout({ type: "Strength Training", duration: "", notes: "", date: new Date().toLocaleDateString('en-CA') });
     }
   };
 
