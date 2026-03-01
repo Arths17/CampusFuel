@@ -507,7 +507,14 @@
   font-size: 1.2rem;
   font-weight: 700;
   color: var(--text-dark);
-  margin: 0 0 1.25rem;
+  margin: 0;
+}
+
+.workoutCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
 }
 
 .workoutEmpty {

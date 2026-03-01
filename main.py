@@ -1470,7 +1470,9 @@ async def log_meal(request: Request):
                     status_code=503,
                 )
             raise
-        return JSONResponse({"success": True})
+        # Return the saved meal so the client can update its optimistic state with the correct id
+        saved_meal = {**data, "user_id": str(user_id)}
+        return JSONResponse({"success": True, "meal": saved_meal})
     
     except json.JSONDecodeError:
         return JSONResponse(

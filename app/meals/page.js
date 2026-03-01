@@ -144,7 +144,12 @@ function MealsPageContent() {
       String(now.getMonth() + 1).padStart(2, '0'),
       String(now.getDate()).padStart(2, '0'),
     ].join('-');
+    // Generate a stable client-side id so the optimistic update and server record share the same id
+    const mealId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `meal_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const mealData = {
+      id: mealId,
       type: newMeal.type,
       time: newMeal.time || now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
       items: newMeal.items,

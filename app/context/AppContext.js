@@ -489,8 +489,10 @@ export function AppProvider({ children }) {
       const parsed = await parseApiResponse(response, "Failed to save meal");
       
       if (parsed.ok && parsed.data?.success !== false) {
-        // Sync with server to get authoritative data (non-blocking, errors don't wipe state)
-        refreshMealData(token).catch(() => {});
+        // If server returns the saved meal, replace the optimistic entry using previousMeals
+        // to avoid duplicates (allMeals closure may already include the optimistic copy)
+        const serverMeal = parsed.data?.meal;
+        syncMealState([serverMeal || optimisticMeal, ...previousMeals]);
         return { success: true };
       }
       // Rollback optimistic update on failure

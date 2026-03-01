@@ -88,14 +88,7 @@ export default function ProgressPage() {
         <Header title="Progress & Analytics" username={user?.username || ""} />
         <div className={styles.content}>
 
-          {/* Log Workout button */}
-          <div className={styles.workoutActionRow}>
-            <button className={styles.logWorkoutBtn} onClick={() => setShowWorkoutModal(true)}>
-              + Log Workout
-            </button>
-          </div>
-
-          {/* Summary Stats */}
+          {/* Summary Stats */
           <div className={styles.summaryGrid}>
             {mealsLoading ? (
               Array.from({ length: 4 }).map((_, idx) => <div key={idx} className={styles.statSkeleton} />)
@@ -292,7 +285,12 @@ export default function ProgressPage() {
 
           {/* Workout Log */}
           <div className={styles.workoutCard}>
-            <h2 className={styles.workoutCardTitle}>🏋️ Workout Log</h2>
+            <div className={styles.workoutCardHeader}>
+              <h2 className={styles.workoutCardTitle}>🏋️ Workout Log</h2>
+              <button className={styles.logWorkoutBtn} onClick={() => setShowWorkoutModal(true)}>
+                + Log Workout
+              </button>
+            </div>
             {workouts.length === 0 ? (
               <p className={styles.workoutEmpty}>No workouts logged yet. Hit &quot;Log Workout&quot; to get started!</p>
             ) : (
