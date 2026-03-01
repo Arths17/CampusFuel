@@ -921,7 +921,7 @@ async def me(request: Request):
         profile = {}
         
         if user_id:
-            res = _sb.table("profiles").select("*").eq("user_id", user_id).execute()
+            res = _sb.table("profile").select("*").eq("user_id", user_id).execute()
             if res.data:
                 profile = res.data[0]
         
@@ -974,12 +974,12 @@ async def save_profile(request: Request):
                 {"success": False, "error": "Not authenticated", "error_code": "AUTH_FAILED"},
                 status_code=401,
             )
-        existing = _sb.table("profiles").select("id").eq("user_id", user_id).execute()
+        existing = _sb.table("profile").select("id").eq("user_id", user_id).execute()
         if existing.data:
-            _sb.table("profiles").update(data).eq("user_id", user_id).execute()
+            _sb.table("profile").update(data).eq("user_id", user_id).execute()
             logger.info(f"✓ Profile updated: {username}")
         else:
-            _sb.table("profiles").insert({**data, "user_id": user_id}).execute()
+            _sb.table("profile").insert({**data, "user_id": user_id}).execute()
             logger.info(f"✓ Profile created: {username}")
         return JSONResponse({"success": True})
     
@@ -1197,7 +1197,7 @@ async def chat(request: Request):
         profile = {}
         if USE_SUPABASE and user_id:
             try:
-                res = _sb.table("profiles").select("*").eq("user_id", user_id).execute()
+                res = _sb.table("profile").select("*").eq("user_id", user_id).execute()
                 if res.data:
                     profile = res.data[0]
             except Exception as e:
