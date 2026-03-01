@@ -36,12 +36,10 @@
 }
 
 .layout {
-  height: 100vh;
+  min-height: 100vh;
   background: var(--cream);
   position: relative;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
 }
 
 /* ── Ambient orbs ─────────────────────────────────────────── */
@@ -74,23 +72,19 @@
 }
 
 .main {
-  flex: 1;
-  min-height: 0;
   display: flex;
   flex-direction: column;
-  padding-top: 52px;
+  padding-top: 80px;
   position: relative;
   z-index: 1;
-  overflow: hidden;
 }
 
 .content {
   flex: 1;
-  min-height: 0;
-  padding: 10px 20px 12px;
+  padding: 28px 32px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 24px;
   overflow-y: auto;
   animation: fadeIn 0.6s ease both;
 }
@@ -98,13 +92,13 @@
 /* Banner */
 .banner {
   background: linear-gradient(135deg, var(--green) 0%, var(--green-light) 100%);
-  border-radius: 14px;
-  padding: 12px 20px;
+  border-radius: 16px;
+  padding: 26px 32px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   color: var(--white);
-  box-shadow: 0 6px 24px rgba(20, 90, 50, 0.25);
+  box-shadow: 0 8px 32px rgba(20, 90, 50, 0.25);
   animation: fadeUp 0.6s ease both;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
   position: relative;
@@ -130,30 +124,21 @@
 .bannerText {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
   animation: slideInLeft 0.8s ease 0.2s both;
 }
 
-.bannerMeta {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.75);
-  font-weight: 500;
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
-}
-
 .bannerTitle {
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 800;
-  letter-spacing: -0.4px;
-  line-height: 1.2;
+  letter-spacing: -0.5px;
 }
 
 .bannerSub {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.92);
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.95);
   max-width: 420px;
-  line-height: 1.4;
+  line-height: 1.5;
 }
 
 .bannerSub strong {
@@ -167,9 +152,9 @@
   align-items: center;
   background: rgba(255, 255, 255, 0.12);
   border: 2px solid rgba(245, 158, 11, 0.8);
-  border-radius: 12px;
-  padding: 10px 18px;
-  gap: 2px;
+  border-radius: 16px;
+  padding: 18px 28px;
+  gap: 6px;
   animation: slideInRight 0.8s ease 0.2s both;
   transition: all 0.3s ease;
   backdrop-filter: blur(10px);
@@ -184,14 +169,14 @@
 }
 
 .calCircleLabel {
-  font-size: 10px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.8px;
   color: rgba(255, 255, 255, 0.8);
 }
 
 .calCircleVal {
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--gold);
 }
@@ -200,7 +185,7 @@
 .statsGrid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+  gap: 18px;
 }
 
 .statsGrid > * {
@@ -213,8 +198,8 @@
 .statsGrid > *:nth-child(4) { animation-delay: 0.4s; }
 
 .statsSkeleton {
-  min-height: 90px;
-  border-radius: 12px;
+  min-height: 130px;
+  border-radius: 14px;
   border: 1px solid var(--border);
   background: linear-gradient(90deg, #ece7dd 25%, #f7f2e9 50%, #ece7dd 75%);
   background-size: 200% 100%;
@@ -235,8 +220,8 @@
 /* Lower section */
 .lower {
   display: grid;
-  grid-template-columns: 1fr 300px;
-  gap: 10px;
+  grid-template-columns: 1fr 320px;
+  gap: 24px;
   align-items: start;
   animation: fadeUp 0.6s ease 0.5s both;
 }
@@ -254,7 +239,7 @@
 .sideCol {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 18px;
 }
 
 .sideCol > * {
@@ -268,13 +253,13 @@
 /* Generic card */
 .card {
   background: var(--white);
-  border-radius: 14px;
-  padding: 14px 16px;
+  border-radius: 16px;
+  padding: 24px;
   box-shadow: var(--card-shadow-lg);
   border: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 16px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -285,21 +270,21 @@
 }
 
 .cardTitle {
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 800;
   color: var(--green);
-  letter-spacing: -0.2px;
+  letter-spacing: -0.3px;
 }
 
 /* Hydration */
 .waterGlasses {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
 .glass {
-  font-size: 18px;
+  font-size: 22px;
   opacity: 0.2;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
@@ -321,15 +306,16 @@
 }
 
 .waterText {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-muted);
   font-weight: 500;
 }
 
 .waterTip {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-muted);
   font-style: italic;
+  margin-top: 6px;
   opacity: 0.7;
 }
 
@@ -337,16 +323,16 @@
 .tips {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 10px;
 }
 
 .tip {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: flex-start;
   animation: fadeIn 0.4s ease both;
-  padding: 5px 6px;
-  border-radius: 7px;
+  padding: 8px;
+  border-radius: 8px;
   transition: all 0.2s ease;
 }
 
@@ -360,7 +346,7 @@
 }
 
 .tipIcon {
-  font-size: 14px;
+  font-size: 16px;
   flex-shrink: 0;
   margin-top: 1px;
   transition: transform 0.3s ease;
@@ -371,17 +357,17 @@
 }
 
 .tipText {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-dark);
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 /* Weekly chart */
 .weekRow {
   display: flex;
   align-items: flex-end;
-  gap: 5px;
-  height: 52px;
+  gap: 6px;
+  height: 70px;
 }
 
 .dayCol {
@@ -439,13 +425,12 @@
 
 /* ── Page Footer ─────────────────────────────── */
 .pageFooter {
-  padding: 8px 20px;
+  padding: 14px 32px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
   border-top: 1px solid var(--border);
   background: rgba(248, 243, 231, 0.8);
-  flex-shrink: 0;
 }

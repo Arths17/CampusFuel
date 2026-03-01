@@ -1,11 +1,11 @@
 .card {
   background: var(--white);
-  border-radius: 12px;
-  padding: 14px 16px;
+  border-radius: 16px;
+  padding: 24px 26px;
   box-shadow: 0 4px 24px rgba(20, 90, 50, 0.12);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
   border-top: 3px solid var(--green);
   transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
 }
@@ -36,16 +36,16 @@
 .top {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
 }
 
 .iconWrap {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
   background: rgba(20, 90, 50, 0.08);
   color: var(--green);
-  font-size: 18px;
+  font-size: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -60,7 +60,7 @@
 }
 
 .label {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text-medium);
   font-weight: 700;
   text-transform: uppercase;
@@ -68,7 +68,7 @@
 }
 
 .value {
-  font-size: 24px;
+  font-size: 30px;
   font-weight: 800;
   color: var(--text-dark);
   line-height: 1.1;
@@ -76,14 +76,14 @@
 }
 
 .unit {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--text-muted);
   margin-left: 3px;
 }
 
 .goalText {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-muted);
   margin-left: 4px;
@@ -91,7 +91,7 @@
 }
 
 .progressTrack {
-  height: 5px;
+  height: 7px;
   background: var(--cream-dark);
   border-radius: 99px;
   overflow: hidden;
@@ -106,8 +106,8 @@
 }
 
 .progressLabel {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text-medium);
-  margin-top: -4px;
+  margin-top: -8px;
   font-weight: 600;
 }
