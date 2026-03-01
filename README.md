@@ -16,21 +16,14 @@ You need **two terminals** — one for the backend, one for the frontend.
 
 ---
 
-### Step 1 — Clone & set up `.env`
+### Step 1 — Clone the repo
 
 ```bash
 git clone https://github.com/Arths17/CampusFuel.git
 cd CampusFuel
 ```
 
-Create a `.env` file in the root with these values (ask the team for the real keys):
-
-```env
-SUPABASE_URL=your_supabase_project_url
-SUPABASE_KEY=your_supabase_secret_key
-SECRET_KEY=any_random_string_here
-GEMINI_API_KEY=your_google_gemini_api_key
-```
+> ✅ A `.env` file with all API keys is already included in the repo — no extra setup needed!
 
 ---
 
