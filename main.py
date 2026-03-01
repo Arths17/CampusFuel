@@ -39,7 +39,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 SECRET = os.environ.get("SECRET_KEY", "elden_ring")
-PERPLEXITY_API_KEY = os.environ.get("PERPLEXITY_API_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 # --- Supabase (optional) ---
 try:
@@ -246,10 +246,10 @@ if MONITORING_ENABLED and health_checker:
         except Exception as e:
             return False, {"status": "disconnected", "error": str(e)}
     
-    # Perplexity health check
-    def check_perplexity() -> tuple[bool, dict]:
-        """Check Perplexity API key is configured."""
-        if PERPLEXITY_API_KEY:
+    # Gemini health check
+    def check_gemini() -> tuple[bool, dict]:
+        """Check Gemini API key is configured."""
+        if GEMINI_API_KEY:
             return True, {"status": "configured"}
         return False, {"status": "missing API key"}
     
@@ -265,7 +265,7 @@ if MONITORING_ENABLED and health_checker:
             return False, {"status": "disconnected", "error": str(e)}
     
     health_checker.register("supabase", check_supabase, critical=True)
-    health_checker.register("perplexity", check_perplexity, critical=False)
+    health_checker.register("gemini", check_gemini, critical=False)
     health_checker.register("chromadb", check_chromadb, critical=False)
 
 @app.get("/health", tags=["monitoring"])
@@ -390,8 +390,8 @@ async def health_check():
     """Check system health and service availability."""
     services = {}
     
-    # Check Perplexity
-    services["perplexity"] = "healthy" if PERPLEXITY_API_KEY else "missing API key"
+    # Check Gemini
+    services["gemini"] = "healthy" if GEMINI_API_KEY else "missing API key"
     
     # Check Supabase
     services["supabase"] = "healthy" if USE_SUPABASE else "unavailable (using local fallback)"
@@ -1211,10 +1211,16 @@ async def chat(request: Request):
                 pass
         
         def generate():
-            """Generate chat response stream using Perplexity."""
+            """Generate chat response stream using Gemini."""
             try:
-                if not PERPLEXITY_API_KEY:
-                    yield "⚠️ **AI Service Unavailable** — Perplexity API key not configured."
+                if not GEMINI_API_KEY:
+                    yield "⚠️ **AI Service Unavailable** — Gemini API key not configured."
+                    return
+                
+                try:
+                    import google.generativeai as genai  # type: ignore
+                except ImportError:
+                    yield "⚠️ **AI Service Unavailable** — google-generativeai package not installed."
                     return
                 
                 from model.model import build_full_context
@@ -1253,45 +1259,29 @@ async def chat(request: Request):
                 except Exception as e:
                     logger.warning(f"Feedback processing failed: {e}")
                 
-                # Call Perplexity API (OpenAI-compatible) with streaming via httpx
-                messages = [
-                    {"role": "system", "content": system_full},
-                    {"role": "user", "content": seed_message},
-                    {"role": "assistant", "content": "Understood. I have your full profile, state analysis, protocol priorities, and nutrition data loaded."},
-                    {"role": "user", "content": _final_message},
-                ]
+                # Build Gemini model with system instruction
+                genai.configure(api_key=GEMINI_API_KEY)
+                gemini_model = genai.GenerativeModel(
+                    "gemini-2.0-flash",
+                    system_instruction=system_full,
+                )
                 
-                with httpx.Client(timeout=60.0) as client:
-                    with client.stream(
-                        "POST",
-                        "https://api.perplexity.ai/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {PERPLEXITY_API_KEY}",
-                            "Content-Type": "application/json",
-                        },
-                        json={
-                            "model": "sonar",
-                            "messages": messages,
-                            "stream": True,
-                        },
-                    ) as response:
-                        response.raise_for_status()
-                        for line in response.iter_lines():
-                            if not line or not line.startswith("data: "):
-                                continue
-                            data = line[6:]
-                            if data == "[DONE]":
-                                break
-                            try:
-                                chunk = json.loads(data)
-                                content = chunk["choices"][0]["delta"].get("content", "")
-                                if content:
-                                    yield content
-                            except (json.JSONDecodeError, KeyError):
-                                continue
+                # Seed the conversation history then send the real message
+                chat_session = gemini_model.start_chat(history=[
+                    {"role": "user", "parts": [seed_message]},
+                    {"role": "model", "parts": ["Understood. I have your full profile, state analysis, protocol priorities, and nutrition data loaded."]},
+                ])
                 
-                logger.info(f"✓ Perplexity chat completed: {username}")
+                response = chat_session.send_message(_final_message, stream=True)
+                for chunk in response:
+                    if chunk.text:
+                        yield chunk.text
+                
+                logger.info(f"✓ Gemini chat completed: {username}")
             
+            except ImportError as e:
+                logger.error(f"Import error in chat: {e}")
+                yield f"[Error: Missing dependency: {e}]"
             except Exception as e:
                 logger.error(f"Chat error: {e}", exc_info=True)
                 yield f"[Error: {str(e)[:100]}]"
