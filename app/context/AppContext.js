@@ -83,11 +83,6 @@ function deriveActivityMetrics(meals) {
 
   let currentStreak = 0;
   const cursor = new Date();
-  const todayKey = cursor.toISOString().split("T")[0];
-  // If no meals today yet, start counting from yesterday so the streak isn't reset
-  if (!byDate[todayKey] || byDate[todayKey].length === 0) {
-    cursor.setDate(cursor.getDate() - 1);
-  }
   while (true) {
     const key = cursor.toISOString().split("T")[0];
     if (byDate[key] && byDate[key].length > 0) {
@@ -101,10 +96,7 @@ function deriveActivityMetrics(meals) {
   const weeklyTotals = deriveWeeklyMeals(meals);
   const proteinGoalDays = weeklyTotals.filter((d) => d.protein >= 108).length;
   const calorieGoalDays = weeklyTotals.filter((d) => d.calories >= 1800 && d.calories <= 2400).length;
-  // Exclude today from perfectWeek if no meals have been logged today yet
-  const today = new Date().toISOString().split("T")[0];
-  const relevantDays = weeklyTotals.filter((d) => d.date < today || (byDate[d.date] && byDate[d.date].length > 0));
-  const perfectWeek = relevantDays.length >= 6 && relevantDays.every((d) => d.calories > 0);
+  const perfectWeek = weeklyTotals.every((d) => d.calories > 0);
 
   const achievements = [
     {

@@ -1220,7 +1220,7 @@ async def chat(request: Request):
                 try:
                     import google.generativeai as genai  # type: ignore
                 except ImportError:
-                    yield "⚠️ **AI Service Unavailable** — google-generativeai package not installed."
+                    yield "⚠️ **AI Service Unavailable** — google-generativeai package not installed. Install with: pip install google-generativeai"
                     return
                 
                 from model.model import build_full_context
