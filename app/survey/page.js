@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import styles from "./survey.module.css";
+import { useApp } from "../context/AppContext";
 
 const STEPS = [
   {
@@ -151,6 +152,7 @@ const NUMERIC_ONLY_KEYS = new Set(["age"]);
 
 export default function SurveyPage() {
   const router = useRouter();
+  const { userProfile, refreshUser } = useApp();
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({});
   const [current, setCurrent] = useState("");
@@ -169,6 +171,62 @@ export default function SurveyPage() {
   const [blockEnd, setBlockEnd] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Pre-populate answers from saved profile when profile data becomes available
+  useEffect(() => {
+    const savedProfile =
+      userProfile && Object.keys(userProfile).length > 0
+        ? userProfile
+        : (() => {
+            try {
+              const cached = localStorage.getItem("campusfuel_profile");
+              return cached ? JSON.parse(cached) : null;
+            } catch { return null; }
+          })();
+
+    if (!savedProfile) return;
+
+    const preloaded = {};
+    STEPS.forEach((s) => {
+      if (savedProfile[s.key] != null && savedProfile[s.key] !== "") {
+        preloaded[s.key] = String(savedProfile[s.key]);
+      }
+    });
+    if (Object.keys(preloaded).length === 0) return;
+
+    setAnswers(preloaded);
+
+    // Seed the UI state for step 0
+    const first = STEPS[0];
+    const firstVal = preloaded[first.key] || "";
+    if (first.type === "classpicker") {
+      if (firstVal) {
+        const blocks = firstVal.split(" | ").map((b) => {
+          const idx = b.lastIndexOf(" ");
+          const [s2, e] = b.substring(idx + 1).split("–");
+          return { days: b.substring(0, idx).split(", "), start: s2, end: e };
+        });
+        setClassBlocks(blocks);
+      }
+    } else if (first.type === "daypicker") {
+      setSelectedDays(firstVal ? firstVal.split(", ") : []);
+    } else if (first.type === "sleeppicker") {
+      const m = firstVal.match(/sleep (.+) for (.+)/);
+      setBedTime(m ? m[1] : "");
+      setWakeTime(m ? m[2] : "");
+    } else if (first.type === "workoutpicker") {
+      if (firstVal === "none") {
+        setWorkoutDays([]);
+        setWorkoutSlot("i don't work out");
+      } else {
+        const parts = firstVal.split(" – ");
+        setWorkoutDays(parts[0] ? parts[0].split(", ") : []);
+        setWorkoutSlot(parts[1] || "");
+      }
+    } else {
+      setCurrent(firstVal || (first.type === "slider" ? "5" : ""));
+    }
+  }, [userProfile]);
 
   const q = STEPS[step];
   const isLast = step === STEPS.length - 1;
@@ -318,6 +376,8 @@ export default function SurveyPage() {
       if (response.ok) {
         // Save to localStorage as cache (will be user-specific via profile fetch)
         localStorage.setItem("campusfuel_profile", JSON.stringify(profile));
+        // Refresh in-memory user profile so re-entering the survey shows saved data
+        try { await refreshUser(); } catch (_) {}
         router.push("/dashboard");
       } else {
         // Get error details from response

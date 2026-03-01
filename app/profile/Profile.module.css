@@ -131,3 +131,69 @@
     0 10px 26px rgba(22, 163, 74, 0.4),
     0 0 0 1px rgba(22, 163, 74, 0.35);
 }
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.sectionLabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #4ade80;
+  margin: 6px 0 2px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.readOnly {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.readOnly:focus {
+  border-color: rgba(55, 65, 81, 0.9);
+  box-shadow: none;
+  transform: none;
+}
+
+.msgOk {
+  font-size: 13px;
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.08);
+  border: 1px solid rgba(74, 222, 128, 0.25);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.msgErr {
+  font-size: 13px;
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.surveyLink {
+  display: block;
+  text-align: center;
+  margin-top: 2px;
+  font-size: 13px;
+  color: #4ade80;
+  text-decoration: none;
+  opacity: 0.75;
+  transition: opacity 0.15s;
+}
+
+.surveyLink:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
