@@ -36,7 +36,8 @@ export default function ProgressPage() {
 
   // Transform weeklyMeals data to include day names
   const weeklyData = weeklyMeals.map((dayData) => {
-    const date = new Date(dayData.date);
+    // Append T12:00:00 to avoid UTC-midnight timezone shifting the weekday
+    const date = new Date(dayData.date + "T12:00:00");
     const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const workoutCount = workouts.filter((workout) => workout.date === dayData.date).length;
     return {
