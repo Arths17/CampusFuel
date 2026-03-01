@@ -3,5 +3,10 @@
   "buildCommand": "npm run build",
   "env": {
     "BACKEND_URL": "https://noticeably-ingenuous-keira.ngrok-free.dev"
+  },
+  "build": {
+    "env": {
+      "BACKEND_URL": "https://noticeably-ingenuous-keira.ngrok-free.dev"
+    }
   }
 }

@@ -4,26 +4,17 @@ const nextConfig = {
     optimizeCss: true,
   },
   async rewrites() {
-    const rawBackendUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-    const backendUrlWithProtocol = /^https?:\/\//i.test(rawBackendUrl)
-      ? rawBackendUrl
-      : `https://${rawBackendUrl}`;
-    const backendUrl = backendUrlWithProtocol.replace(/\/+$/, '');
     return [
-      {
-        source: '/api/login',
-        destination: `${backendUrl}/api/login`,
-      },
-      {
-        source: '/api/signup',
-        destination: `${backendUrl}/api/signup`,
-      },
+      // Route all /api/* calls through the internal Next.js proxy
+      // (app/api/proxy/[...path]/route.js) which adds ngrok headers
+      // and reads BACKEND_URL at runtime, not build time.
       {
         source: '/api/:path*',
-        destination: `${backendUrl}/api/:path*`,
+        destination: '/api/proxy/:path*',
       },
     ];
   },
 };
 
 export default nextConfig;
+
