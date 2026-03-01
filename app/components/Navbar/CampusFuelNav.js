@@ -49,7 +49,7 @@ export default function CampusFuelNav() {
           <Link href="/nutrition" className={linkClass("/nutrition")}>Nutrition</Link>
           <Link href="/progress" className={linkClass("/progress")}>Progress</Link>
           <Link href="/meals" className={linkClass("/meals")}>Meals</Link>
-          <Link href="/Profile Page" className={linkClass("/Profile Page")}>Profile</Link>
+          <Link href="/profile" className={linkClass("/profile")}>Profile</Link>
         </nav>
 
         {/* Right: actions */}
