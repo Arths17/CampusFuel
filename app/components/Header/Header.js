@@ -19,14 +19,6 @@ export default function Header({ title = "Dashboard", username = "" }) {
         <p className={styles.date}>{today}</p>
       </div>
       <div className={styles.right}>
-        <div className={styles.searchBar}>
-          <span className={styles.searchIcon}>🔍</span>
-          <input
-            type="text"
-            placeholder="Search foods..."
-            className={styles.searchInput}
-          />
-        </div>
         <Link href="/Profile Page" className={styles.avatarLink}>
           <div className={styles.avatar}>
             <span>{initials}</span>
