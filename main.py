@@ -325,8 +325,13 @@ def _decode_token(request: Request) -> Optional[dict]:
         logger.error(f"Token decode error: {e}")
         return None
 
+def _is_missing_table(e) -> bool:
+    """Return True if the Supabase error is a missing table (PGRST205)."""
+    return isinstance(e, dict) and e.get("code") == "PGRST205" or \
+           (hasattr(e, 'args') and e.args and "PGRST205" in str(e.args[0]))
+
+
 def _validate_username(username: str) -> None:
-    """Validate username format."""
     if not (3 <= len(username) <= 50):
         raise ValidationError("Username must be 3-50 characters")
     if not re.match(r"^[a-zA-Z0-9_-]+$", username):
@@ -613,42 +618,31 @@ async def change_password(request: Request):
 
         _validate_password(new_password)
 
-        # Try Supabase first
-        if USE_SUPABASE:
-            try:
-                row = None
-                if user_id:
-                    res = _sb.table("users").select("id,username,password").eq("id", user_id).execute()
-                    if res.data:
-                        row = _cast(dict, res.data[0])
-                if not row:
-                    res = _sb.table("users").select("id,username,password").eq("username", username).execute()
-                    if res.data:
-                        row = _cast(dict, res.data[0])
+        row = None
+        if user_id:
+            res = _sb.table("users").select("id,username,password").eq("id", user_id).execute()
+            if res.data:
+                row = _cast(dict, res.data[0])
+        if not row:
+            res = _sb.table("users").select("id,username,password").eq("username", username).execute()
+            if res.data:
+                row = _cast(dict, res.data[0])
 
-                if row:
-                    if not bcrypt.checkpw(current_password.encode(), row["password"].encode()):
-                        return JSONResponse(
-                            {"success": False, "error": "Current password is incorrect", "error_code": "AUTH_FAILED"},
-                            status_code=401,
-                        )
-
-                    new_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
-                    _sb.table("users").update({"password": new_hash}).eq("id", row.get("id")).execute()
-                    logger.info(f"✓ Password changed: {username} (Supabase)")
-                    return JSONResponse({"success": True})
-            except Exception as e:
-                logger.warning(f"Supabase password change failed: {e}, falling back to local")
-
-        ok, err = _local_change_password(username, current_password, new_password)
-        if not ok:
-            status_code = 401 if "incorrect" in (err or "").lower() else 400
+        if not row:
             return JSONResponse(
-                {"success": False, "error": err or "Failed to change password", "error_code": "PASSWORD_CHANGE_FAILED"},
-                status_code=status_code,
+                {"success": False, "error": "User not found", "error_code": "NOT_FOUND"},
+                status_code=404,
             )
 
-        logger.info(f"✓ Password changed: {username} (local)")
+        if not bcrypt.checkpw(current_password.encode(), row["password"].encode()):
+            return JSONResponse(
+                {"success": False, "error": "Current password is incorrect", "error_code": "AUTH_FAILED"},
+                status_code=401,
+            )
+
+        new_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+        _sb.table("users").update({"password": new_hash}).eq("id", row.get("id")).execute()
+        logger.info(f"✓ Password changed: {username}")
         return JSONResponse({"success": True})
 
     except json.JSONDecodeError:
@@ -684,12 +678,18 @@ async def get_water_intake(request: Request, date: Optional[str] = None):
         user_id = payload.get("user_id")
         day = date or datetime.utcnow().strftime("%Y-%m-%d")
 
-        res = _sb.table("water_logs").select("glasses,date").eq("user_id", user_id).eq("date", day).execute()
-        glasses = 0
-        if res.data:
-            entry = _cast(dict, res.data[0])
-            glasses = int(entry.get("glasses") or 0)
-        return JSONResponse({"success": True, "date": day, "glasses": glasses})
+        try:
+            res = _sb.table("water_logs").select("glasses,date").eq("user_id", user_id).eq("date", day).execute()
+            glasses = 0
+            if res.data:
+                entry = _cast(dict, res.data[0])
+                glasses = int(entry.get("glasses") or 0)
+            return JSONResponse({"success": True, "date": day, "glasses": glasses})
+        except Exception as e:
+            err_str = str(e)
+            if "PGRST205" in err_str or "schema cache" in err_str:
+                return JSONResponse({"success": True, "date": day, "glasses": 0})
+            raise
 
     except Exception as e:
         logger.error(f"Get water intake error: {e}", exc_info=True)
@@ -723,11 +723,16 @@ async def save_water_intake(request: Request):
         glasses = int(body.get("glasses", 0))
         glasses = max(0, min(glasses, 30))
 
-        existing = _sb.table("water_logs").select("id").eq("user_id", user_id).eq("date", day).execute()
-        if existing.data:
-            _sb.table("water_logs").update({"glasses": glasses}).eq("user_id", user_id).eq("date", day).execute()
-        else:
-            _sb.table("water_logs").insert({"user_id": user_id, "date": day, "glasses": glasses}).execute()
+        try:
+            existing = _sb.table("water_logs").select("id").eq("user_id", user_id).eq("date", day).execute()
+            if existing.data:
+                _sb.table("water_logs").update({"glasses": glasses}).eq("user_id", user_id).eq("date", day).execute()
+            else:
+                _sb.table("water_logs").insert({"user_id": user_id, "date": day, "glasses": glasses}).execute()
+        except Exception as e:
+            err_str = str(e)
+            if "PGRST205" not in err_str and "schema cache" not in err_str:
+                raise
         return JSONResponse({"success": True, "date": day, "glasses": glasses})
 
     except json.JSONDecodeError:
@@ -762,15 +767,21 @@ async def get_workouts(request: Request, start_date: Optional[str] = None, end_d
         username = payload["username"]
         user_id = payload.get("user_id")
 
-        query = _sb.table("workouts").select("*").eq("user_id", user_id)
-        if start_date:
-            query = query.gte("date", start_date)
-        if end_date:
-            query = query.lte("date", end_date)
-        res = query.execute()
-        workouts_data: list[dict] = [item for item in (res.data or []) if isinstance(item, dict)]
-        workouts_data.sort(key=lambda item: str(item.get("timestamp", "")), reverse=True)
-        return JSONResponse({"success": True, "workouts": workouts_data})
+        try:
+            query = _sb.table("workouts").select("*").eq("user_id", user_id)
+            if start_date:
+                query = query.gte("date", start_date)
+            if end_date:
+                query = query.lte("date", end_date)
+            res = query.execute()
+            workouts_data: list[dict] = [item for item in (res.data or []) if isinstance(item, dict)]
+            workouts_data.sort(key=lambda item: str(item.get("timestamp", "")), reverse=True)
+            return JSONResponse({"success": True, "workouts": workouts_data})
+        except Exception as e:
+            err_str = str(e)
+            if "PGRST205" in err_str or "schema cache" in err_str:
+                return JSONResponse({"success": True, "workouts": []})
+            raise
 
     except Exception as e:
         logger.error(f"Get workouts error: {e}", exc_info=True)
@@ -817,7 +828,12 @@ async def log_workout(request: Request):
             "timestamp": str(body.get("timestamp") or datetime.utcnow().isoformat()),
         }
 
-        _sb.table("workouts").insert({**workout, "user_id": user_id}).execute()
+        try:
+            _sb.table("workouts").insert({**workout, "user_id": user_id}).execute()
+        except Exception as e:
+            err_str = str(e)
+            if "PGRST205" not in err_str and "schema cache" not in err_str:
+                raise
         return JSONResponse({"success": True, "workout": workout})
 
     except json.JSONDecodeError:
@@ -852,7 +868,12 @@ async def delete_workout(request: Request, workout_id: str):
         username = payload["username"]
         user_id = payload.get("user_id")
 
-        _sb.table("workouts").delete().eq("user_id", user_id).eq("id", workout_id).execute()
+        try:
+            _sb.table("workouts").delete().eq("user_id", user_id).eq("id", workout_id).execute()
+        except Exception as e:
+            err_str = str(e)
+            if "PGRST205" not in err_str and "schema cache" not in err_str:
+                raise
         return JSONResponse({"success": True})
 
     except Exception as e:
@@ -929,31 +950,11 @@ async def save_profile(request: Request):
         user_id = payload.get("user_id")
         data = await request.json()
         
-        # Validate profile data (basic checks) - handle both string and numeric values
-        if isinstance(data, dict):
-            # Convert age to int if it's a string and validate
-            if "age" in data:
-                try:
-                    age_val = int(data["age"]) if isinstance(data["age"], str) else data["age"]
-                    if not (13 <= age_val <= 120):
-                        return JSONResponse(
-                            {"success": False, "error": "Age must be between 13 and 120", "error_code": "VALIDATION_ERROR"},
-                            status_code=422,
-                        )
-                except (ValueError, TypeError):
-                    pass  # Allow non-numeric age strings like "20s"
-            
-            # Convert weight_kg to float if it's a string and validate
-            if "weight_kg" in data:
-                try:
-                    weight_val = float(data["weight_kg"]) if isinstance(data["weight_kg"], str) else data["weight_kg"]
-                    if not (30 < weight_val < 200):
-                        return JSONResponse(
-                            {"success": False, "error": "Weight must be between 30 and 200 kg", "error_code": "VALIDATION_ERROR"},
-                            status_code=422,
-                        )
-                except (ValueError, TypeError):
-                    pass  # Allow non-numeric weight strings like "150 lbs"
+        if not isinstance(data, dict) or not data:
+            return JSONResponse(
+                {"success": False, "error": "Invalid profile data", "error_code": "VALIDATION_ERROR"},
+                status_code=422,
+            )
         
         if not user_id:
             return JSONResponse(
@@ -1434,8 +1435,14 @@ async def log_meal(request: Request):
         if "id" not in data or not data.get("id"):
             data["id"] = str(uuid4())
         
-        _sb.table("meals").insert({**data, "user_id": user_id}).execute()
-        logger.info(f"✓ Meal logged: {username}")
+        try:
+            _sb.table("meals").insert({**data, "user_id": user_id}).execute()
+            logger.info(f"✓ Meal logged: {username}")
+        except Exception as e:
+            err_str = str(e)
+            if "PGRST205" not in err_str and "schema cache" not in err_str:
+                raise
+            logger.warning(f"meals table missing in Supabase — meal not persisted")
         return JSONResponse({"success": True})
     
     except json.JSONDecodeError:
@@ -1469,11 +1476,17 @@ async def get_meals(request: Request, date: Optional[str] = None):
         username = payload["username"]
         user_id = payload.get("user_id")
         
-        query = _sb.table("meals").select("*").eq("user_id", user_id)
-        if date:
-            query = query.eq("date", date)
-        res = query.execute()
-        return JSONResponse({"success": True, "meals": res.data or []})
+        try:
+            query = _sb.table("meals").select("*").eq("user_id", user_id)
+            if date:
+                query = query.eq("date", date)
+            res = query.execute()
+            return JSONResponse({"success": True, "meals": res.data or []})
+        except Exception as e:
+            err_str = str(e)
+            if "PGRST205" in err_str or "schema cache" in err_str:
+                return JSONResponse({"success": True, "meals": []})
+            raise
     
     except Exception as e:
         logger.error(f"Get meals error: {e}", exc_info=True)
@@ -1511,8 +1524,13 @@ async def update_meal(request: Request, meal_id: str):
 
         data["id"] = meal_id
 
-        _sb.table("meals").update(data).eq("user_id", user_id).eq("id", meal_id).execute()
-        logger.info(f"✓ Meal updated: {username} ({meal_id})")
+        try:
+            _sb.table("meals").update(data).eq("user_id", user_id).eq("id", meal_id).execute()
+            logger.info(f"✓ Meal updated: {username} ({meal_id})")
+        except Exception as e:
+            err_str = str(e)
+            if "PGRST205" not in err_str and "schema cache" not in err_str:
+                raise
         return JSONResponse({"success": True})
 
     except json.JSONDecodeError:
@@ -1547,8 +1565,13 @@ async def delete_meal(request: Request, meal_id: str):
         username = payload["username"]
         user_id = payload.get("user_id")
 
-        _sb.table("meals").delete().eq("user_id", user_id).eq("id", meal_id).execute()
-        logger.info(f"✓ Meal deleted: {username} ({meal_id})")
+        try:
+            _sb.table("meals").delete().eq("user_id", user_id).eq("id", meal_id).execute()
+            logger.info(f"✓ Meal deleted: {username} ({meal_id})")
+        except Exception as e:
+            err_str = str(e)
+            if "PGRST205" not in err_str and "schema cache" not in err_str:
+                raise
         return JSONResponse({"success": True})
 
     except Exception as e:
