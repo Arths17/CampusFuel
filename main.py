@@ -573,7 +573,7 @@ async def signup(
         return JSONResponse(
             {
                 "success": False,
-                "error": str(e),
+                "error": "Internal server error",
                 "error_code": "INTERNAL_SERVER_ERROR",
             },
             status_code=500,
