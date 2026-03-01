@@ -45,10 +45,14 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 try:
     from supabase import create_client
     _sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+    # Admin client uses the service-role key to bypass Row Level Security for write operations
+    _service_key = os.environ.get("SUPABASE_SERVICE_KEY", os.environ["SUPABASE_KEY"])
+    _sb_admin = create_client(os.environ["SUPABASE_URL"], _service_key)
     USE_SUPABASE = True
     logger.info("✓ Supabase connected")
 except Exception as e:
     USE_SUPABASE = False
+    _sb_admin = None
     logger.info(f"✗ Supabase unavailable: {e} (using local fallback)")
 
 # Import exceptions and models (with graceful fallback)
@@ -75,7 +79,7 @@ def get_rate_limiter():
 
 # Try to import actual implementations
 try:
-    from api_exceptions import (
+    from model.api_exceptions import (
         HealthOSAPIError as _HealthOSAPIError,
         AuthenticationError,
         AuthorizationError,
@@ -86,8 +90,8 @@ try:
         InternalServerError as _InternalServerError,
         ExternalServiceError,
     )
-    from api_models import AuthResponse, UserResponse, ErrorResponse
-    from rate_limiter import get_rate_limiter as _get_rate_limiter
+    from model.api_models import AuthResponse, UserResponse, ErrorResponse
+    from model.rate_limiter import get_rate_limiter as _get_rate_limiter
     
     # Use imported versions
     HealthOSAPIError = _HealthOSAPIError  # type: ignore
@@ -157,7 +161,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         start_time = time.time()
         
         try:
-            from structured_logging import logger as struct_logger
+            from model.structured_logging import logger as struct_logger
             struct_logger.log_request(request.method, request.url.path)
             logger_available = True
         except ImportError:
@@ -167,7 +171,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         
         if logger_available:
             elapsed_ms = (time.time() - start_time) * 1000
-            from structured_logging import logger as struct_logger
+            from model.structured_logging import logger as struct_logger
             struct_logger.log_response(response.status_code, elapsed_ms)
         
         return response
@@ -213,7 +217,7 @@ perf_metrics = None
 churn_predictor = None
 
 try:
-    from monitoring import HealthCheck, PerformanceMetrics, capture_exception
+    from model.monitoring import HealthCheck, PerformanceMetrics, capture_exception
     health_checker = HealthCheck()
     perf_metrics = PerformanceMetrics()
     MONITORING_ENABLED = True
@@ -415,7 +419,7 @@ async def health_check():
 # ══════════════════════════════════════════════
 
 @app.post(
-    "/login",
+    "/api/login",
     tags=["Auth"],
     summary="User login",
     description="Authenticate user and return JWT token",
@@ -544,7 +548,9 @@ async def signup(
             )
         
         hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-        res = _sb.table("users").insert({
+        # Use admin client (service-role key) to bypass RLS for user creation
+        _insert_client = _sb_admin if _sb_admin is not None else _sb
+        res = _insert_client.table("users").insert({
             "username": username,
             "password": hashed,
         }).execute()
