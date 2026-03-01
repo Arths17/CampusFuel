@@ -40,7 +40,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 SECRET = os.environ.get("SECRET_KEY", "elden_ring")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2")
 
 # --- Supabase (optional) ---
 try:
@@ -248,11 +249,13 @@ if MONITORING_ENABLED and health_checker:
             return False, {"status": "disconnected", "error": str(e)}
     
     # Gemini health check
-    def check_gemini() -> tuple[bool, dict]:
+    def check_ollama() -> tuple[bool, dict]:
         """Check Gemini API key is configured."""
-        if GEMINI_API_KEY:
-            return True, {"status": "configured"}
-        return False, {"status": "missing API key"}
+        try:
+            r = httpx.get(f"{OLLAMA_URL}/api/tags", timeout=3.0)
+            return r.status_code == 200, {"status": "running" if r.status_code == 200 else "unreachable"}
+        except Exception as e:
+            return False, {"status": "unreachable", "error": str(e)}
     
     # ChromaDB health check
     def check_chromadb() -> tuple[bool, dict]:
@@ -266,7 +269,7 @@ if MONITORING_ENABLED and health_checker:
             return False, {"status": "disconnected", "error": str(e)}
     
     health_checker.register("supabase", check_supabase, critical=True)
-    health_checker.register("gemini", check_gemini, critical=False)
+    health_checker.register("gemini", check_ollama, critical=False)
     health_checker.register("chromadb", check_chromadb, critical=False)
 
 @app.get("/health", tags=["monitoring"])
@@ -392,7 +395,11 @@ async def health_check():
     services = {}
     
     # Check Gemini
-    services["gemini"] = "healthy" if GEMINI_API_KEY else "missing API key"
+    try:
+        r = httpx.get(f"{OLLAMA_URL}/api/tags", timeout=3.0)
+        services["ollama"] = "healthy" if r.status_code == 200 else "unreachable"
+    except Exception:
+        services["ollama"] = "unreachable"
     
     # Check Supabase
     services["supabase"] = "healthy" if USE_SUPABASE else "unavailable (using local fallback)"
@@ -1217,28 +1224,17 @@ async def chat(request: Request):
                 pass
         
         def generate():
-            """Generate chat response stream using Gemini."""
+            """Generate chat response stream using Ollama."""
             try:
-                if not GEMINI_API_KEY:
-                    yield "⚠️ **AI Service Unavailable** — Gemini API key not configured."
-                    return
-                
-                try:
-                    import google.generativeai as genai  # type: ignore
-                except ImportError:
-                    yield "⚠️ **AI Service Unavailable** — google-generativeai package not installed. Install with: pip install google-generativeai"
-                    return
-                
                 from model.model import build_full_context
                 from model.constraint_graph import ConstraintGraph
                 from model.validation import parse_profile as _parse_profile
                 from model.meal_swap import detect_swap_request, find_swaps, format_swap_block
                 from model import nutrition_db, user_state
-                
+
                 _profile = _cast(dict, profile) if profile else {}
                 system_full, seed_message = build_full_context(_profile, username)
-                
-                # Meal swap injection
+
                 _swap_prefix = ""
                 _rejected = detect_swap_request(message)
                 if _rejected and nutrition_db.is_loaded():
@@ -1253,37 +1249,40 @@ async def chat(request: Request):
                         _swap_prefix = format_swap_block(_rejected, _swaps, constraint_graph=_cg)
                     except Exception as e:
                         logger.warning(f"Meal swap failed: {e}")
-                
-                _final_message = f"{_swap_prefix}\n\n{message}" if _swap_prefix else message
-                
-                # Extract feedback from message
+
+                _final_message = f"{_swap_prefix}
+
+{message}" if _swap_prefix else message
+
                 try:
                     feedback = user_state.parse_feedback_from_text(message)
                     if feedback:
                         user_state.update_weights_from_feedback(username, feedback, learning_rate=0.05)
-                        logger.info(f"✓ Feedback recorded for {username}: {feedback}")
                 except Exception as e:
                     logger.warning(f"Feedback processing failed: {e}")
-                
-                # Build Gemini model with system instruction
-                genai.configure(api_key=GEMINI_API_KEY)
-                gemini_model = genai.GenerativeModel(
-                    "gemini-2.0-flash",
-                    system_instruction=system_full,
-                )
-                
-                # Seed the conversation history then send the real message
-                chat_session = gemini_model.start_chat(history=[
-                    {"role": "user", "parts": [seed_message]},
-                    {"role": "model", "parts": ["Understood. I have your full profile, state analysis, protocol priorities, and nutrition data loaded."]},
-                ])
-                
-                response = chat_session.send_message(_final_message, stream=True)
-                for chunk in response:
-                    if chunk.text:
-                        yield chunk.text
-                
-                logger.info(f"✓ Gemini chat completed: {username}")
+
+                messages = [
+                    {"role": "system", "content": system_full},
+                    {"role": "user", "content": seed_message},
+                    {"role": "assistant", "content": "Understood. I have your full profile loaded."},
+                    {"role": "user", "content": _final_message},
+                ]
+
+                with httpx.Client(timeout=120.0) as client:
+                    with client.stream("POST", f"{OLLAMA_URL}/api/chat",
+                        json={"model": OLLAMA_MODEL, "messages": messages, "stream": True},
+                    ) as resp:
+                        resp.raise_for_status()
+                        for line in resp.iter_lines():
+                            if not line: continue
+                            try:
+                                chunk = json.loads(line)
+                                content = chunk.get("message", {}).get("content", "")
+                                if content: yield content
+                                if chunk.get("done"): break
+                            except (json.JSONDecodeError, KeyError): continue
+
+                logger.info(f"✓ Ollama chat completed: {username}")
             
             except ImportError as e:
                 logger.error(f"Import error in chat: {e}")
