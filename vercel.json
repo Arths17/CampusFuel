@@ -2,12 +2,12 @@
   "version": 2,
   "buildCommand": "npm run build",
   "env": {
-    "BACKEND_URL": "https://noticeably-ingenuous-keira.ngrok-free.dev",
+    "BACKEND_URL": "https://web-production-45fe8.up.railway.app",
     "NEXT_PUBLIC_API_URL": ""
   },
   "build": {
     "env": {
-      "BACKEND_URL": "https://noticeably-ingenuous-keira.ngrok-free.dev",
+      "BACKEND_URL": "https://web-production-45fe8.up.railway.app",
       "NEXT_PUBLIC_API_URL": ""
     }
   }
