@@ -23,7 +23,7 @@ import session_memory
 # ──────────────────────────────────────────────
 # Gemini model
 MODEL_NAME   = os.environ.get("HEALTH_MODEL", "gemini-2.0-flash-lite")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyAZvLurB1gnxuu92p2CDdFcNH4EoQ2pNc0")
 PROFILE_FILE = "user_profile.json"
 
 # Global flag accumulator (populated during onboarding)
