@@ -1256,7 +1256,7 @@ async def chat(request: Request):
                 # Build Gemini model with system instruction
                 genai.configure(api_key=GEMINI_API_KEY)
                 gemini_model = genai.GenerativeModel(
-                    "gemini-1.5-flash",
+                    "gemini-2.0-flash",
                     system_instruction=system_full,
                 )
                 
