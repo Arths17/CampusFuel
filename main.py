@@ -341,8 +341,8 @@ def _validate_username(username: str) -> None:
 
 def _validate_password(password: str) -> None:
     """Validate password strength."""
-    if not (8 <= len(password) <= 128):
-        raise ValidationError("Password must be 8-128 characters")
+    if not (6 <= len(password) <= 128):
+        raise ValidationError("Password must be 6-128 characters")
 
 
 

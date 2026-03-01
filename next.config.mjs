@@ -12,7 +12,7 @@ const nextConfig = {
     return [
       {
         source: '/api/login',
-        destination: `${backendUrl}/login`,
+        destination: `${backendUrl}/api/login`,
       },
       {
         source: '/api/signup',
