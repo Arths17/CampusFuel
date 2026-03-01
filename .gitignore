@@ -30,3 +30,7 @@ __pycache__/
 *.swp
 *.swo
 *~
+
+# Generated / local data
+*.sqlite3
+user_profiles/
