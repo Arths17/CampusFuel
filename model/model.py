@@ -1,6 +1,6 @@
 """
 HealthOS v3.0 — Personal Health Intelligence System for College Students
-Upgrades: Input Validation · Confidence Scoring · Risk Classification · Priority Engine · Ollama Local AI
+Upgrades: Input Validation · Confidence Scoring · Risk Classification · Priority Engine · Gemini AI
 Run:  .venv/bin/python model/model.py
 """
 
@@ -9,9 +9,8 @@ import re
 import json
 import textwrap
 import sys
-import ollama
+import google.generativeai as genai
 from datetime import datetime
-
 # Add model/ directory to path so we can import nutrition_db / user_state
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import nutrition_db
@@ -22,11 +21,10 @@ import session_memory
 # ──────────────────────────────────────────────
 # CONFIG
 # ──────────────────────────────────────────────
-# llama3.1:8b gives much better health reasoning. Already pulled!
-# Switch model: HEALTH_MODEL=llama3.2 python model/model.py
-MODEL_NAME   = os.environ.get("HEALTH_MODEL", "llama3.1:8b")
+# Gemini model
+MODEL_NAME   = os.environ.get("HEALTH_MODEL", "gemini-2.0-flash-lite")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 PROFILE_FILE = "user_profile.json"
-OLLAMA_HOST  = "http://localhost:11434"   # default; override if Ollama runs elsewhere
 
 # Global flag accumulator (populated during onboarding)
 DATA_FLAGS: list = []
@@ -524,7 +522,7 @@ def format_analysis_block(analysis: dict) -> str:
 def print_banner():
     print("\n" + "═" * 60)
     print("  HealthOS v3.0 — Personal Health Intelligence System")
-    print(f"  Powered by Ollama  [{MODEL_NAME}]")
+    print(f"  Powered by Gemini [{MODEL_NAME}]")
     print("═" * 60 + "\n")
 
 
@@ -809,15 +807,10 @@ def chatbot_response(profile: dict, username: str, stream: bool = True, max_retr
     if not username or not isinstance(username, str):
         raise ValueError("Invalid username: must be a non-empty string")
     
-    # Verify Ollama is available
-    try:
-        ollama.list()
-    except Exception as e:
-        raise ConnectionError(
-            f"Cannot connect to Ollama at {OLLAMA_HOST}. "
-            f"Ensure Ollama is running with: ollama serve\n"
-            f"Error: {str(e)}"
-        )
+    # Verify Gemini API key is configured
+    if not GEMINI_API_KEY:
+        raise ConnectionError("GEMINI_API_KEY environment variable is not set.")
+    genai.configure(api_key=GEMINI_API_KEY)
     
     # Build context with error handling
     try:
@@ -828,92 +821,54 @@ def chatbot_response(profile: dict, username: str, stream: bool = True, max_retr
     if not system_full or not seed_message:
         raise ValueError("Context builder returned empty system prompt or message")
     
-    messages = [
-        {"role": "system", "content": system_full},
-        {"role": "user", "content": seed_message}
-    ]
-    
     # Retry logic with exponential backoff
     import time
     last_error = None
     
     for attempt in range(max_retries):
         try:
+            gemini_model = genai.GenerativeModel(
+                MODEL_NAME,
+                system_instruction=system_full,
+            )
+            chat_session = gemini_model.start_chat(history=[
+                {"role": "user", "parts": [seed_message]},
+                {"role": "model", "parts": ["Understood. I have your full profile loaded."]},
+            ])
+            
             if stream:
-                # Streaming mode (matches main() implementation)
-                response_stream = ollama.chat(
-                    model=MODEL_NAME,
-                    messages=messages,
-                    stream=True,
-                    options={
-                        "temperature": 0.7,
-                        "num_predict": 2000,
-                    }
-                )
-                
+                response_stream = chat_session.send_message(seed_message, stream=True)
                 reply_parts = []
                 for chunk in response_stream:
-                    if hasattr(chunk, 'message') and hasattr(chunk.message, 'content'):
-                        token = chunk.message.content
-                        reply_parts.append(token)
-                    elif isinstance(chunk, dict) and 'message' in chunk:
-                        token = chunk['message'].get('content', '')
-                        reply_parts.append(token)
-                
+                    if chunk.text:
+                        reply_parts.append(chunk.text)
                 reply = "".join(reply_parts)
-                
-                if not reply:
-                    raise RuntimeError("Received empty response from model")
-                    
-                return reply
-                
             else:
-                # Non-streaming mode
-                response = ollama.chat(
-                    model=MODEL_NAME,
-                    messages=messages,
-                    stream=False,
-                    options={
-                        "temperature": 0.7,
-                        "num_predict": 2000,
-                    }
-                )
-                
-                # Handle different response formats
-                if hasattr(response, 'message') and hasattr(response.message, 'content'):
-                    reply = response.message.content
-                elif isinstance(response, dict):
-                    reply = response.get('message', {}).get('content', '')
-                else:
-                    raise RuntimeError(f"Unexpected response format: {type(response)}")
-                
-                if not reply:
-                    raise RuntimeError("Received empty response from model")
-                    
-                return reply
+                response = chat_session.send_message(seed_message, stream=False)
+                reply = response.text
+            
+            if not reply:
+                raise RuntimeError("Received empty response from model")
+            return reply
                 
         except KeyboardInterrupt:
-            # Allow user to interrupt
             raise
             
         except Exception as e:
             last_error = e
             if attempt < max_retries - 1:
-                wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                wait_time = 2 ** attempt
                 print(f"\n⚠️  Attempt {attempt + 1} failed: {str(e)}")
                 print(f"   Retrying in {wait_time}s...")
                 time.sleep(wait_time)
             else:
-                # Final attempt failed
                 error_msg = (
                     f"Failed to generate response after {max_retries} attempts.\n"
                     f"Last error: {str(last_error)}\n"
-                    f"Model: {MODEL_NAME}\n"
-                    f"Ensure the model is available: ollama pull {MODEL_NAME}"
+                    f"Model: {MODEL_NAME}"
                 )
                 raise RuntimeError(error_msg) from last_error
     
-    # Should never reach here, but just in case
     raise RuntimeError("Unexpected error in retry loop")
 
 # ──────────────────────────────────────────────
@@ -922,14 +877,11 @@ def chatbot_response(profile: dict, username: str, stream: bool = True, max_retr
 def main():
     print_banner()
 
-    # Verify Ollama is reachable before doing any work
-    try:
-        ollama.list()   # lightweight ping
-    except Exception:
-        print("⚠️  Cannot reach Ollama at", OLLAMA_HOST)
-        print("    Start it with:  ollama serve")
-        print(f"    Pull the model: ollama pull {MODEL_NAME}")
+    # Verify Gemini API key before doing any work
+    if not GEMINI_API_KEY:
+        print("⚠️  GEMINI_API_KEY is not set. Export it before running.")
         return
+    genai.configure(api_key=GEMINI_API_KEY)
 
     # Load nutrition index (built by train.py)
     nutrition_index_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "nutrition_index.json")
@@ -1035,27 +987,28 @@ def main():
     if research_ctx:
         print("  📊  Research context loaded (sleep + mental health data)")
 
-    # Build conversation history (Ollama multi-turn)
-    # Constraint block is FIRST so it is the first thing the LLM reads
-    messages: list[dict] = [{"role": "system", "content": _constraint_block + SYSTEM_PROMPT + research_ctx}]
-
-    # Seed with profile + analysis + memory + priority block + RAG nutrition
+    # Seed message: profile + analysis + memory + priority block + RAG nutrition
     seed_message = profile_to_context(profile, analysis, priority_block, nutrition_ctx, memory_ctx, trend_ctx)
-    messages.append({"role": "user", "content": seed_message})
+
+    # Build Gemini model and chat session
+    _gemini_model = genai.GenerativeModel(
+        MODEL_NAME,
+        system_instruction=_constraint_block + SYSTEM_PROMPT + research_ctx,
+    )
+    _chat_session = _gemini_model.start_chat(history=[])
+
     print("\n⏳  Generating your personalized plan…\n")
     try:
-        stream = ollama.chat(model=MODEL_NAME, messages=messages, stream=True)
+        response_stream = _chat_session.send_message(seed_message, stream=True)
         reply_parts = []
-        for chunk in stream:
-            token = chunk.message.content
-            print(token, end="", flush=True)
-            reply_parts.append(token)
+        for chunk in response_stream:
+            if chunk.text:
+                print(chunk.text, end="", flush=True)
+                reply_parts.append(chunk.text)
         reply = "".join(reply_parts)
-        messages.append({"role": "assistant", "content": reply})
         print()   # newline after stream ends
     except Exception as e:
-        print(f"\n⚠️  Ollama error: {e}")
-        print(f"    • Ensure the model is available:  ollama pull {MODEL_NAME}")
+        print(f"\n⚠️  Gemini error: {e}")
         return
     print("\n" + "─" * 60)
 
@@ -1133,25 +1086,15 @@ def main():
 
         print("\n⏳  Thinking…\n")
         try:
-            messages.append({"role": "user", "content": _send})
-
-            # Trim context: keep system prompt (index 0) + last 10 turns
-            system_msg = messages[0]
-            recent     = messages[1:][-10:]
-            trimmed    = [system_msg] + recent
-
-            stream = ollama.chat(model=MODEL_NAME, messages=trimmed, stream=True)
+            response_stream = _chat_session.send_message(_send, stream=True)
             reply_parts = []
-            for chunk in stream:
-                token = chunk.message.content
-                print(token, end="", flush=True)
-                reply_parts.append(token)
-            reply = "".join(reply_parts)
-            messages.append({"role": "assistant", "content": reply})
+            for chunk in response_stream:
+                if chunk.text:
+                    print(chunk.text, end="", flush=True)
+                    reply_parts.append(chunk.text)
             print()   # newline after stream ends
         except Exception as e:
-            messages.pop()   # remove unanswered user message
-            print(f"\n⚠️  Ollama error: {e}")
+            print(f"\n⚠️  Gemini error: {e}")
         print("\n" + "─" * 60 + "\n")
 
 
