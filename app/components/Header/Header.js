@@ -27,7 +27,6 @@ export default function Header({ title = "Dashboard", username = "" }) {
             className={styles.searchInput}
           />
         </div>
-        <button className={styles.addBtn}>+ Log Meal</button>
         <Link href="/Profile Page" className={styles.avatarLink}>
           <div className={styles.avatar}>
             <span>{initials}</span>
