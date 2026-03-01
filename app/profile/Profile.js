@@ -169,7 +169,7 @@ function Profile() {
                 className={styles.input}
                 value={fields.height}
                 onChange={set("height")}
-                placeholder="e.g. 5'10\""
+                placeholder={"e.g. 5'10\""}
               />
             </label>
             <label className={styles.label}>
