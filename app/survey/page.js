@@ -664,7 +664,7 @@ export default function SurveyPage() {
             disabled={loading}
             type="button"
           >
-            {loading ? "Saving..." : isLast ? "Finish & Start AI Chat 🚀" : "Next →"}
+            {loading ? "Saving..." : isLast ? "Finish Survey ✓" : "Next →"}
           </button>
         </div>
       </div>

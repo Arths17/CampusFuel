@@ -213,7 +213,7 @@ export function AppProvider({ children }) {
 
   // Initialize auth and fetch user data
   useEffect(() => {
-    const publicPaths = ["/", "/login", "/signup"];
+    const publicPaths = ["/", "/login", "/signup", "/survey"];
     if (publicPaths.includes(pathname)) {
       setLoading(false);
       return;
