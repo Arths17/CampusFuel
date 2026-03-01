@@ -2,17 +2,25 @@
 
 > AI-powered nutrition & wellness tracker built for college students.
 
+**Runs 100% locally — no cloud accounts, no API keys, no internet required.**
+
 ---
 
-## 🚀 Running Locally (Quick Start)
+## 🚀 Running Locally — Complete Setup Guide
 
-You need **two terminals** — one for the backend, one for the frontend.
+You need **three terminals**: one for the backend, one for the frontend, and one for the AI model.
+
+---
 
 ### Prerequisites
 
-- Python 3.10+ (`python3 --version`)
-- Node.js 18+ (`node --version`)
-- A `.env` file in the project root (see Step 1)
+| Tool | Version | Check |
+|------|---------|-------|
+| Python | 3.9+ | `python3 --version` |
+| Node.js | 18+ | `node --version` |
+| npm | 9+ | `npm --version` |
+| Ollama | latest | [ollama.com/download](https://ollama.com/download) |
+| Git | any | `git --version` |
 
 ---
 
@@ -23,53 +31,85 @@ git clone https://github.com/Arths17/CampusFuel.git
 cd CampusFuel
 ```
 
-> ✅ A `.env` file with all API keys is already included in the repo — no extra setup needed!
+> ✅ A `.env` file is already included — no extra configuration needed.
 
 ---
 
-### Step 2 — Start the Backend (Terminal 1)
+### Step 2 — Install the AI model (one-time)
+
+CampusFuel uses **Ollama** to run the AI chat locally. Install it, then pull the model:
 
 ```bash
-# Create virtualenv (first time only)
-python3 -m venv .venv
-
-# Activate it
-source .venv/bin/activate        # macOS/Linux
-# .venv\Scripts\activate         # Windows
-
-# Install dependencies (first time only)
-pip install -r requirements.txt
-
-# Start the backend
-uvicorn main:app --reload --port 8000
+# Pull the llama3.2 model (downloads ~2 GB, one-time only)
+ollama pull llama3.2
 ```
 
-✅ Backend running at: **http://localhost:8000**  
-📖 API docs at: **http://localhost:8000/api/docs**
+Start the Ollama server (keep this running):
+
+```bash
+ollama serve
+```
+
+> ✅ Ollama runs at: **http://localhost:11434**  
+> You can verify it's working: `curl http://localhost:11434/api/tags`
 
 ---
 
-### Step 3 — Start the Frontend (Terminal 2)
+### Step 3 — Start the Backend (Terminal 2)
 
 ```bash
-# Install dependencies (first time only)
+# Install Python dependencies (first time only)
+pip install -r requirements.txt
+
+# Start the FastAPI backend
+python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+> ✅ Backend running at: **http://localhost:8000**  
+> 📖 API docs at: **http://localhost:8000/api/docs**  
+> 🩺 Health check: `curl http://localhost:8000/api/health`
+
+**First time only — if you use a virtual environment:**
+```bash
+python3 -m venv .venv
+source .venv/bin/activate        # macOS/Linux
+# .venv\Scripts\activate         # Windows
+pip install -r requirements.txt
+python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+---
+
+### Step 4 — Start the Frontend (Terminal 3)
+
+```bash
+# Install Node dependencies (first time only)
 npm install
 
 # Start Next.js dev server
 npm run dev
 ```
 
-✅ Frontend running at: **http://localhost:3000**
+> ✅ Frontend running at: **http://localhost:3000**
 
 ---
 
-### Step 4 — Open the app
+### Step 5 — Open the app
 
 Go to **http://localhost:3000** in your browser.
 
-1. Click **Sign Up** → create an account  
-2. Complete the **survey** (19 questions about diet, goals, lifestyle)  
-3. You'll land on the **Dashboard** — fully personalized!
+#### Quick login with the demo account
+| Field | Value |
+|-------|-------|
+| Username | `test123` |
+| Password | `test123` |
+
+This account works out of the box — no signup needed.
+
+#### Create your own account
+1. Click **Sign Up** → enter a username & password  
+2. Complete the **onboarding survey** (height, weight, diet goals, activity level)  
+3. You'll land on the **Dashboard** — fully personalized to your profile!
 
 ---
 
@@ -78,15 +118,15 @@ Go to **http://localhost:3000** in your browser.
 | Page | URL | Description |
 |------|-----|-------------|
 | Home | `/` | Landing page |
-| Sign Up | `/signup` | Create account |
+| Sign Up | `/signup` | Create a new account |
 | Login | `/login` | Sign in |
-| Survey | `/survey` | One-time profile setup (19 steps) |
-| Dashboard | `/dashboard` | Nutrition overview + water tracker |
+| Survey | `/survey` | One-time onboarding (diet, goals, lifestyle) |
+| Dashboard | `/dashboard` | Calorie overview + water tracker |
 | Meals | `/meals` | Log & browse meals |
-| Nutrition | `/nutrition` | Search food database (5,797 items) |
+| Nutrition | `/nutrition` | Search food database (5,797 USDA items) |
 | Progress | `/progress` | Workout tracker + weekly chart |
-| AI Chat | `/ai` | Gemini-powered nutrition assistant |
-| Profile | `/Profile Page` | Account settings & change password |
+| AI Chat | `/ai` | Ollama-powered nutrition assistant |
+| Profile | `/profile` | Account settings & change password |
 
 ---
 
@@ -95,75 +135,75 @@ Go to **http://localhost:3000** in your browser.
 | Layer | Tech |
 |-------|------|
 | Frontend | Next.js 16, React 19 |
-| Backend | FastAPI (Python) |
-| Database | Supabase (PostgreSQL) |
-| AI | Google Gemini 1.5 Flash |
+| Backend | FastAPI (Python 3.9+) |
+| Storage | Local JSON files (`users.json`, `user_profiles/`) |
+| AI | Ollama + llama3.2 (runs locally) |
 | Auth | JWT (PyJWT + bcrypt) |
-| Food DB | USDA FoodData Central (5,797 items) |
+| Food DB | USDA FoodData Central (5,797 items, bundled) |
+
+> **No internet or cloud accounts required.** All data is stored locally in JSON files.
+
+---
+
+## 📁 Local Data Storage
+
+All user data is stored locally in the project folder — no database setup needed:
+
+| File / Folder | What it stores |
+|---------------|----------------|
+| `users.json` | Usernames & hashed passwords |
+| `user_profiles/<username>.json` | Profile, survey answers, nutrition goals |
+| `user_profiles/<username>_water.json` | Daily water intake logs |
+| `user_profiles/<username>_meals.json` | Meal logs |
 
 ---
 
 ## 🛠 Troubleshooting
 
-**"Cannot connect to backend" / all API calls fail**  
-→ Make sure `uvicorn` is running in Terminal 1 on port 8000.  
-→ Check: `curl http://localhost:8000/api/health`
-
-**"Internal server error" on signup/login**  
-→ Check your `.env` file has all 4 keys. Restart the backend after editing `.env`.
-
-**Meals/water/workouts not saving (still show empty)**  
-→ These need 3 Supabase tables. Run this SQL in [Supabase dashboard](https://supabase.com/dashboard) → SQL Editor:
-```sql
-CREATE TABLE water_logs (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER,
-  date TEXT,
-  glasses INTEGER
-);
-CREATE TABLE meals (
-  id TEXT PRIMARY KEY,
-  user_id INTEGER,
-  type TEXT,
-  items JSONB,
-  total JSONB,
-  date TEXT,
-  timestamp TIMESTAMPTZ DEFAULT now()
-);
-CREATE TABLE workouts (
-  id TEXT PRIMARY KEY,
-  user_id INTEGER,
-  type TEXT,
-  duration INTEGER,
-  notes TEXT,
-  date TEXT,
-  timestamp TIMESTAMPTZ DEFAULT now()
-);
+**Backend won't start — `ModuleNotFoundError`**
+```bash
+pip install -r requirements.txt
 ```
 
 **Port already in use**
 ```bash
-lsof -ti :8000 | xargs kill -9   # free up backend port
-lsof -ti :3000 | xargs kill -9   # free up frontend port
+lsof -ti :8000 | xargs kill -9   # free backend port
+lsof -ti :3000 | xargs kill -9   # free frontend port
 ```
 
-**`ModuleNotFoundError` on backend start**
+**AI chat not responding**
 ```bash
-source .venv/bin/activate
-pip install -r requirements.txt
+# Make sure Ollama is running
+ollama serve
+
+# Verify the model is downloaded
+ollama list   # should show llama3.2
+```
+
+**"Cannot connect to backend" / all API calls fail**  
+→ Make sure the backend is running in its terminal on port 8000.  
+→ Test: `curl http://localhost:8000/api/health` — should return `{"status":"ok",...}`
+
+**Login says "User not found" for a new account**  
+→ The account may not have saved. Check that `users.json` exists in the project root and is writable.
+
+**Meals/water/workouts showing empty after refresh**  
+→ Check that the `user_profiles/` folder exists and is writable:
+```bash
+ls user_profiles/
 ```
 
 ---
 
 ## ✨ Features
 
-- 🥗 **Personalized nutrition goals** — calculated from survey data (BMR + TDEE)
-- 💧 **Water tracker** — click glasses to log daily intake
+- 🥗 **Personalized nutrition goals** — BMR + TDEE calculated from your survey answers
+- 💧 **Water tracker** — click to log daily glasses
 - 🍽 **Meal logger** — search & log from 5,797 USDA foods
-- 💪 **Workout tracker** — log exercises & view history
-- 🤖 **AI chat** — Gemini-powered nutrition assistant
-- 📊 **Weekly calorie chart** — track trends across the week
-- ✨ **Personalized AI insights** — tips generated from your profile
+- 💪 **Workout tracker** — log exercises & view weekly history
+- 🤖 **AI chat** — local Ollama nutrition assistant (no API key needed)
+- 📊 **Weekly calorie chart** — visualize your intake over 7 days
+- 👤 **Profile management** — update goals and change password
 
 ---
 
