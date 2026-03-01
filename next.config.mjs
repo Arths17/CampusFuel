@@ -4,13 +4,17 @@ const nextConfig = {
     optimizeCss: true,
   },
   async rewrites() {
+    const backendUrl = (
+      process.env.BACKEND_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      "http://localhost:8000"
+    ).replace(/\/+$/, "");
+
     return [
-      // Route all /api/* calls through the internal Next.js proxy
-      // (app/api/proxy/[...path]/route.js) which adds ngrok headers
-      // and reads BACKEND_URL at runtime, not build time.
+      // All /api/* calls proxy to the FastAPI backend
       {
-        source: '/api/:path*',
-        destination: '/api/proxy/:path*',
+        source: "/api/:path*",
+        destination: `${backendUrl}/api/:path*`,
       },
     ];
   },
