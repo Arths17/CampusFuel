@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useApp } from "../context/AppContext";
 import CampusFuelNav from "../components/Navbar/CampusFuelNav";
-import Header from "../components/Header/Header";
 import StatsCard from "../components/StatsCard/StatsCard";
 import MealLog from "../components/MealLog/MealLog";
 import styles from "./dashboard.module.css";
@@ -282,12 +281,12 @@ export default function DashboardPage() {
       
       <CampusFuelNav />
       <div className={styles.main}>
-        <Header title="Dashboard" username={user?.username || ""} />
         <div className={styles.content}>
 
           {/* Welcome Banner */}
           <div className={styles.banner}>
             <div className={styles.bannerText}>
+              <div className={styles.bannerMeta}>{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</div>
               <h2 className={styles.bannerTitle}>{greeting}, {displayName}! 👋</h2>
               <p className={styles.bannerSub}>
                 {hasProfile && userProfile.goal
