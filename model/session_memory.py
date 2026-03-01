@@ -9,6 +9,7 @@ The AI can then reference real trends: "last Tuesday your energy was 3/10..."
 import os
 import re
 import json
+from typing import Optional
 from datetime import datetime, timedelta
 
 _MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -132,7 +133,7 @@ def run_checkin(profile: dict) -> dict:
     # 3 — Sleep hours as a plain number
     raw_s = input("\n  😴  How many hours did you sleep last night?\n  ▶  ").strip()
     try:
-        sleep_h: float | None = round(float(raw_s), 1)
+        sleep_h: Optional[float] = round(float(raw_s), 1)
     except ValueError:
         sleep_h = None
 

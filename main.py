@@ -54,8 +54,14 @@ try:
     logger.info("✓ Supabase connected")
 except Exception as e:
     USE_SUPABASE = False
+    _sb = None
     _sb_admin = None
     logger.info(f"✗ Supabase unavailable: {e} (using local fallback)")
+
+# Force local-only mode - no cloud dependency
+USE_SUPABASE = False  # local-only mode
+_sb = None
+_sb_admin = None
 
 # Import exceptions and models (with graceful fallback)
 # Define fallback classes first
@@ -360,6 +366,148 @@ def _profile_path(username: str) -> str:
     os.makedirs(profiles_dir, exist_ok=True)
     return os.path.join(profiles_dir, f"{username}_profile.json")
 
+# ══════════════════════════════════════════════
+# LOCAL FILE STORAGE HELPERS
+# ══════════════════════════════════════════════
+import threading
+_local_lock = threading.Lock()
+_LOCAL_DIR = os.path.dirname(os.path.abspath(__file__))
+_USERS_FILE = os.path.join(_LOCAL_DIR, "users.json")
+_PROFILES_DIR = os.path.join(_LOCAL_DIR, "user_profiles")
+
+def _local_read_json(path, default=None):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return [] if default is None else default
+
+def _local_write_json(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+def _local_get_user(username):
+    for u in _local_read_json(_USERS_FILE, []):
+        if u.get("username") == username:
+            return u
+    return None
+
+def _local_create_user(username, hashed_password):
+    with _local_lock:
+        users = _local_read_json(_USERS_FILE, [])
+        if any(u.get("username") == username for u in users):
+            return None
+        new_user = {"id": str(uuid4()), "username": username, "password": hashed_password}
+        users.append(new_user)
+        with open(_USERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(users, f, indent=2)
+        return new_user
+
+def _local_update_user_password(username, new_hashed):
+    with _local_lock:
+        users = _local_read_json(_USERS_FILE, [])
+        for u in users:
+            if u.get("username") == username:
+                u["password"] = new_hashed
+                with open(_USERS_FILE, "w", encoding="utf-8") as f:
+                    json.dump(users, f, indent=2)
+                return True
+        return False
+
+def _local_get_profile(username):
+    os.makedirs(_PROFILES_DIR, exist_ok=True)
+    path = os.path.join(_PROFILES_DIR, f"{username}.json")
+    return _local_read_json(path, {})
+
+def _local_save_profile(username, data):
+    os.makedirs(_PROFILES_DIR, exist_ok=True)
+    path = os.path.join(_PROFILES_DIR, f"{username}.json")
+    existing = _local_read_json(path, {})
+    existing.update(data)
+    _local_write_json(path, existing)
+
+def _local_get_water(username, date):
+    os.makedirs(_PROFILES_DIR, exist_ok=True)
+    path = os.path.join(_PROFILES_DIR, f"{username}_water.json")
+    return int(_local_read_json(path, {}).get(date, 0))
+
+def _local_save_water(username, date, glasses):
+    os.makedirs(_PROFILES_DIR, exist_ok=True)
+    path = os.path.join(_PROFILES_DIR, f"{username}_water.json")
+    with _local_lock:
+        data = _local_read_json(path, {})
+        data[date] = glasses
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+
+def _local_get_workouts(username, start_date=None, end_date=None):
+    os.makedirs(_PROFILES_DIR, exist_ok=True)
+    path = os.path.join(_PROFILES_DIR, f"{username}_workouts.json")
+    data = _local_read_json(path, [])
+    if start_date:
+        data = [w for w in data if str(w.get("date", "")) >= start_date]
+    if end_date:
+        data = [w for w in data if str(w.get("date", "")) <= end_date]
+    data.sort(key=lambda w: str(w.get("timestamp", "")), reverse=True)
+    return data
+
+def _local_save_workout(username, workout):
+    os.makedirs(_PROFILES_DIR, exist_ok=True)
+    path = os.path.join(_PROFILES_DIR, f"{username}_workouts.json")
+    with _local_lock:
+        data = _local_read_json(path, [])
+        data.append(workout)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+
+def _local_delete_workout(username, workout_id):
+    os.makedirs(_PROFILES_DIR, exist_ok=True)
+    path = os.path.join(_PROFILES_DIR, f"{username}_workouts.json")
+    with _local_lock:
+        data = [w for w in _local_read_json(path, []) if w.get("id") != workout_id]
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+
+def _local_get_meals(username, date=None):
+    os.makedirs(_PROFILES_DIR, exist_ok=True)
+    path = os.path.join(_PROFILES_DIR, f"{username}_meals.json")
+    data = _local_read_json(path, [])
+    if date:
+        data = [m for m in data if str(m.get("date", "")) == date]
+    return data
+
+def _local_save_meal(username, meal):
+    os.makedirs(_PROFILES_DIR, exist_ok=True)
+    path = os.path.join(_PROFILES_DIR, f"{username}_meals.json")
+    with _local_lock:
+        data = _local_read_json(path, [])
+        data.append(meal)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+
+def _local_update_meal(username, meal_id, new_data):
+    os.makedirs(_PROFILES_DIR, exist_ok=True)
+    path = os.path.join(_PROFILES_DIR, f"{username}_meals.json")
+    with _local_lock:
+        data = _local_read_json(path, [])
+        for i, m in enumerate(data):
+            if m.get("id") == meal_id:
+                data[i] = {**m, **new_data, "id": meal_id}
+                break
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+
+def _local_delete_meal(username, meal_id):
+    os.makedirs(_PROFILES_DIR, exist_ok=True)
+    path = os.path.join(_PROFILES_DIR, f"{username}_meals.json")
+    with _local_lock:
+        data = [m for m in _local_read_json(path, []) if m.get("id") != meal_id]
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+
+
+
 
 # ══════════════════════════════════════════════
 # HEALTH CHECK ENDPOINT
@@ -478,27 +626,19 @@ async def login(request: Request, username: str = Form(...), password: str = For
                 raise
             return JSONResponse({"success": False, "error": str(e)}, status_code=422)
         
-        res = _sb.table("users").select("*").eq("username", username).execute()
-        if res.data:
-            row = _cast(dict, res.data[0])
+        if USE_SUPABASE and _sb:
+            res = _sb.table("users").select("*").eq("username", username).execute()
+            row = _cast(dict, res.data[0]) if res.data else None
+        else:
+            row = _local_get_user(username)
+        if row:
             if bcrypt.checkpw(password.encode(), row["password"].encode()):
                 token = _make_token(username, row.get("id"))
                 logger.info(f"✓ Login successful: {username}")
-                return JSONResponse({
-                    "success": True,
-                    "token": token,
-                    "username": username,
-                    "user_id": row.get("id"),
-                })
-            return JSONResponse(
-                {"success": False, "error": "Incorrect password", "error_code": "AUTH_FAILED"},
-                status_code=401
-            )
+                return JSONResponse({"success": True, "token": token, "username": username, "user_id": row.get("id")})
+            return JSONResponse({"success": False, "error": "Incorrect password", "error_code": "AUTH_FAILED"}, status_code=401)
         logger.warning(f"✗ Login failed: {username} — not found")
-        return JSONResponse(
-            {"success": False, "error": "User not found", "error_code": "NOT_FOUND"},
-            status_code=404
-        )
+        return JSONResponse({"success": False, "error": "User not found", "error_code": "NOT_FOUND"}, status_code=404)
     
     except Exception as e:
         logger.error(f"Login endpoint error: {e}", exc_info=True)
@@ -548,33 +688,24 @@ async def signup(
                 raise
             return JSONResponse({"success": False, "error": str(e)}, status_code=422)
         
-        existing = _sb.table("users").select("id").eq("username", username).execute()
-        if existing.data:
-            return JSONResponse(
-                {"success": False, "error": "Username already taken", "error_code": "CONFLICT"},
-                status_code=409,
-            )
-        
         hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-        # Use admin client (service-role key) to bypass RLS for user creation
-        _insert_client = _sb_admin if _sb_admin is not None else _sb
-        res = _insert_client.table("users").insert({
-            "username": username,
-            "password": hashed,
-        }).execute()
-        
         uid: Optional[str] = None
-        if res.data:
-            user_row = _cast(dict, res.data[0])
-            uid = _cast(Optional[str], user_row.get("id"))
+        if USE_SUPABASE and _sb:
+            existing = _sb.table("users").select("id").eq("username", username).execute()
+            if existing.data:
+                return JSONResponse({"success": False, "error": "Username already taken", "error_code": "CONFLICT"}, status_code=409)
+            _insert_client = _sb_admin if _sb_admin is not None else _sb
+            res = _insert_client.table("users").insert({"username": username, "password": hashed}).execute()
+            if res.data:
+                uid = _cast(Optional[str], _cast(dict, res.data[0]).get("id"))
+        else:
+            new_user = _local_create_user(username, hashed)
+            if new_user is None:
+                return JSONResponse({"success": False, "error": "Username already taken", "error_code": "CONFLICT"}, status_code=409)
+            uid = new_user.get("id")
         token = _make_token(username, uid)
         logger.info(f"✓ Signup successful: {username}")
-        return JSONResponse({
-            "success": True,
-            "token": token,
-            "username": username,
-            "user_id": uid,
-        })
+        return JSONResponse({"success": True, "token": token, "username": username, "user_id": uid})
     
     except Exception as e:
         logger.error(f"Signup endpoint error: {e}", exc_info=True)
@@ -640,14 +771,15 @@ async def change_password(request: Request):
         _validate_password(new_password)
 
         row = None
-        if user_id:
-            res = _sb.table("users").select("id,username,password").eq("id", user_id).execute()
-            if res.data:
-                row = _cast(dict, res.data[0])
-        if not row:
-            res = _sb.table("users").select("id,username,password").eq("username", username).execute()
-            if res.data:
-                row = _cast(dict, res.data[0])
+        if USE_SUPABASE and _sb:
+            if user_id:
+                res = _sb.table("users").select("id,username,password").eq("id", user_id).execute()
+                if res.data: row = _cast(dict, res.data[0])
+            if not row:
+                res = _sb.table("users").select("id,username,password").eq("username", username).execute()
+                if res.data: row = _cast(dict, res.data[0])
+        else:
+            row = _local_get_user(username)
 
         if not row:
             return JSONResponse(
@@ -662,7 +794,10 @@ async def change_password(request: Request):
             )
 
         new_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
-        _sb.table("users").update({"password": new_hash}).eq("id", row.get("id")).execute()
+        if USE_SUPABASE and _sb:
+            _sb.table("users").update({"password": new_hash}).eq("id", row.get("id")).execute()
+        else:
+            _local_update_user_password(username, new_hash)
         logger.info(f"✓ Password changed: {username}")
         return JSONResponse({"success": True})
 
@@ -699,18 +834,15 @@ async def get_water_intake(request: Request, date: Optional[str] = None):
         user_id = payload.get("user_id")
         day = date or datetime.utcnow().strftime("%Y-%m-%d")
 
-        try:
-            res = _sb.table("water_logs").select("glasses,date").eq("user_id", user_id).eq("date", day).execute()
-            glasses = 0
-            if res.data:
-                entry = _cast(dict, res.data[0])
-                glasses = int(entry.get("glasses") or 0)
-            return JSONResponse({"success": True, "date": day, "glasses": glasses})
-        except Exception as e:
-            err_str = str(e)
-            if "PGRST205" in err_str or "schema cache" in err_str:
-                return JSONResponse({"success": True, "date": day, "glasses": 0})
-            raise
+        if USE_SUPABASE and _sb:
+            try:
+                res = _sb.table("water_logs").select("glasses,date").eq("user_id", user_id).eq("date", day).execute()
+                glasses = int(_cast(dict, res.data[0]).get("glasses") or 0) if res.data else 0
+            except Exception:
+                glasses = 0
+        else:
+            glasses = _local_get_water(username, day)
+        return JSONResponse({"success": True, "date": day, "glasses": glasses})
 
     except Exception as e:
         logger.error(f"Get water intake error: {e}", exc_info=True)
@@ -744,16 +876,17 @@ async def save_water_intake(request: Request):
         glasses = int(body.get("glasses", 0))
         glasses = max(0, min(glasses, 30))
 
-        try:
-            existing = _sb.table("water_logs").select("id").eq("user_id", user_id).eq("date", day).execute()
-            if existing.data:
-                _sb.table("water_logs").update({"glasses": glasses}).eq("user_id", user_id).eq("date", day).execute()
-            else:
-                _sb.table("water_logs").insert({"user_id": user_id, "date": day, "glasses": glasses}).execute()
-        except Exception as e:
-            err_str = str(e)
-            if "PGRST205" not in err_str and "schema cache" not in err_str:
-                raise
+        if USE_SUPABASE and _sb:
+            try:
+                ex = _sb.table("water_logs").select("id").eq("user_id", user_id).eq("date", day).execute()
+                if ex.data:
+                    _sb.table("water_logs").update({"glasses": glasses}).eq("user_id", user_id).eq("date", day).execute()
+                else:
+                    _sb.table("water_logs").insert({"user_id": user_id, "date": day, "glasses": glasses}).execute()
+            except Exception:
+                pass
+        else:
+            _local_save_water(username, day, glasses)
         return JSONResponse({"success": True, "date": day, "glasses": glasses})
 
     except json.JSONDecodeError:
@@ -788,21 +921,18 @@ async def get_workouts(request: Request, start_date: Optional[str] = None, end_d
         username = payload["username"]
         user_id = payload.get("user_id")
 
-        try:
-            query = _sb.table("workouts").select("*").eq("user_id", user_id)
-            if start_date:
-                query = query.gte("date", start_date)
-            if end_date:
-                query = query.lte("date", end_date)
-            res = query.execute()
-            workouts_data: list[dict] = [item for item in (res.data or []) if isinstance(item, dict)]
-            workouts_data.sort(key=lambda item: str(item.get("timestamp", "")), reverse=True)
-            return JSONResponse({"success": True, "workouts": workouts_data})
-        except Exception as e:
-            err_str = str(e)
-            if "PGRST205" in err_str or "schema cache" in err_str:
-                return JSONResponse({"success": True, "workouts": []})
-            raise
+        if USE_SUPABASE and _sb:
+            try:
+                query = _sb.table("workouts").select("*").eq("user_id", user_id)
+                if start_date: query = query.gte("date", start_date)
+                if end_date: query = query.lte("date", end_date)
+                res = query.execute()
+                workouts_data = sorted([i for i in (res.data or []) if isinstance(i, dict)], key=lambda x: str(x.get("timestamp","")), reverse=True)
+            except Exception:
+                workouts_data = []
+        else:
+            workouts_data = _local_get_workouts(username, start_date, end_date)
+        return JSONResponse({"success": True, "workouts": workouts_data})
 
     except Exception as e:
         logger.error(f"Get workouts error: {e}", exc_info=True)
@@ -894,12 +1024,13 @@ async def delete_workout(request: Request, workout_id: str):
         username = payload["username"]
         user_id = payload.get("user_id")
 
-        try:
-            _sb.table("workouts").delete().eq("user_id", user_id).eq("id", workout_id).execute()
-        except Exception as e:
-            err_str = str(e)
-            if "PGRST205" not in err_str and "schema cache" not in err_str:
-                raise
+        if USE_SUPABASE and _sb:
+            try:
+                _sb.table("workouts").delete().eq("user_id", user_id).eq("id", workout_id).execute()
+            except Exception:
+                pass
+        else:
+            _local_delete_workout(username, workout_id)
         return JSONResponse({"success": True})
 
     except Exception as e:
@@ -933,17 +1064,16 @@ async def me(request: Request):
         user_id = payload.get("user_id")
         profile = {}
         
-        if user_id:
-            res = _sb.table("profile").select("*").eq("user_id", user_id).execute()
-            if res.data:
-                profile = res.data[0]
-        
-        return JSONResponse({
-            "success": True,
-            "username": username,
-            "user_id": user_id,
-            "profile": profile,
-        })
+        if USE_SUPABASE and _sb and user_id:
+            try:
+                res = _sb.table("profile").select("*").eq("user_id", user_id).execute()
+                if res.data:
+                    profile = res.data[0]
+            except Exception:
+                pass
+        if not profile:
+            profile = _local_get_profile(username)
+        return JSONResponse({"success": True, "username": username, "user_id": user_id, "profile": profile})
     
     except Exception as e:
         logger.error(f"Profile endpoint error: {e}", exc_info=True)
@@ -987,13 +1117,16 @@ async def save_profile(request: Request):
                 {"success": False, "error": "Not authenticated", "error_code": "AUTH_FAILED"},
                 status_code=401,
             )
-        existing = _sb.table("profile").select("id").eq("user_id", user_id).execute()
-        if existing.data:
-            _sb.table("profile").update(data).eq("user_id", user_id).execute()
-            logger.info(f"✓ Profile updated: {username}")
+        if USE_SUPABASE and _sb:
+            existing = _sb.table("profile").select("id").eq("user_id", user_id).execute()
+            if existing.data:
+                _sb.table("profile").update(data).eq("user_id", user_id).execute()
+            else:
+                _sb.table("profile").insert({**data, "user_id": user_id}).execute()
+            logger.info(f"✓ Profile saved to Supabase: {username}")
         else:
-            _sb.table("profile").insert({**data, "user_id": user_id}).execute()
-            logger.info(f"✓ Profile created: {username}")
+            _local_save_profile(username, data)
+            logger.info(f"✓ Profile saved locally: {username}")
         return JSONResponse({"success": True})
     
     except json.JSONDecodeError:
@@ -1208,20 +1341,15 @@ async def chat(request: Request):
         
         # Load profile
         profile = {}
-        if USE_SUPABASE and user_id:
+        if USE_SUPABASE and _sb and user_id:
             try:
                 res = _sb.table("profile").select("*").eq("user_id", user_id).execute()
                 if res.data:
                     profile = res.data[0]
             except Exception as e:
                 logger.warning(f"Profile load error: {e}")
-        
         if not profile:
-            try:
-                with open(_profile_path(username), "r") as f:
-                    profile = json.load(f)
-            except FileNotFoundError:
-                pass
+            profile = _local_get_profile(username)
         
         def generate():
             """Generate chat response stream using Ollama."""
@@ -1250,9 +1378,7 @@ async def chat(request: Request):
                     except Exception as e:
                         logger.warning(f"Meal swap failed: {e}")
 
-                _final_message = f"{_swap_prefix}
-
-{message}" if _swap_prefix else message
+                _final_message = (_swap_prefix + chr(10) + chr(10) + message) if _swap_prefix else message
 
                 try:
                     feedback = user_state.parse_feedback_from_text(message)
@@ -1458,20 +1584,15 @@ async def log_meal(request: Request):
         if "id" not in data or not data.get("id"):
             data["id"] = str(uuid4())
         
-        try:
-            _sb.table("meals").insert({**data, "user_id": user_id}).execute()
-            logger.info(f"✓ Meal logged: {username}")
-        except Exception as e:
-            err_str = str(e)
-            if "PGRST205" in err_str or "schema cache" in err_str:
-                logger.error("meals table not configured in Supabase — run docs/database_schema.sql")
-                return JSONResponse(
-                    {"success": False, "error": "Meal storage is not set up. Run the database schema in Supabase.", "error_code": "DB_NOT_CONFIGURED"},
-                    status_code=503,
-                )
-            raise
-        # Return the saved meal so the client can update its optimistic state with the correct id
-        saved_meal = {**data, "user_id": str(user_id)}
+        if USE_SUPABASE and _sb:
+            try:
+                _sb.table("meals").insert({**data, "user_id": user_id}).execute()
+            except Exception:
+                pass
+        else:
+            _local_save_meal(username, data)
+        logger.info(f"✓ Meal logged: {username}")
+        saved_meal = {**data, "user_id": str(user_id) if user_id else ""}
         return JSONResponse({"success": True, "meal": saved_meal})
     
     except json.JSONDecodeError:
@@ -1505,17 +1626,17 @@ async def get_meals(request: Request, date: Optional[str] = None):
         username = payload["username"]
         user_id = payload.get("user_id")
         
-        try:
-            query = _sb.table("meals").select("*").eq("user_id", user_id)
-            if date:
-                query = query.eq("date", date)
-            res = query.execute()
-            return JSONResponse({"success": True, "meals": res.data or []})
-        except Exception as e:
-            err_str = str(e)
-            if "PGRST205" in err_str or "schema cache" in err_str:
-                return JSONResponse({"success": True, "meals": []})
-            raise
+        if USE_SUPABASE and _sb:
+            try:
+                query = _sb.table("meals").select("*").eq("user_id", user_id)
+                if date: query = query.eq("date", date)
+                res = query.execute()
+                meals_list = res.data or []
+            except Exception:
+                meals_list = []
+        else:
+            meals_list = _local_get_meals(username, date)
+        return JSONResponse({"success": True, "meals": meals_list})
     
     except Exception as e:
         logger.error(f"Get meals error: {e}", exc_info=True)
@@ -1553,13 +1674,14 @@ async def update_meal(request: Request, meal_id: str):
 
         data["id"] = meal_id
 
-        try:
-            _sb.table("meals").update(data).eq("user_id", user_id).eq("id", meal_id).execute()
-            logger.info(f"✓ Meal updated: {username} ({meal_id})")
-        except Exception as e:
-            err_str = str(e)
-            if "PGRST205" not in err_str and "schema cache" not in err_str:
-                raise
+        if USE_SUPABASE and _sb:
+            try:
+                _sb.table("meals").update(data).eq("user_id", user_id).eq("id", meal_id).execute()
+            except Exception:
+                pass
+        else:
+            _local_update_meal(username, meal_id, data)
+        logger.info(f"✓ Meal updated: {username} ({meal_id})")
         return JSONResponse({"success": True})
 
     except json.JSONDecodeError:
@@ -1594,13 +1716,14 @@ async def delete_meal(request: Request, meal_id: str):
         username = payload["username"]
         user_id = payload.get("user_id")
 
-        try:
-            _sb.table("meals").delete().eq("user_id", user_id).eq("id", meal_id).execute()
-            logger.info(f"✓ Meal deleted: {username} ({meal_id})")
-        except Exception as e:
-            err_str = str(e)
-            if "PGRST205" not in err_str and "schema cache" not in err_str:
-                raise
+        if USE_SUPABASE and _sb:
+            try:
+                _sb.table("meals").delete().eq("user_id", user_id).eq("id", meal_id).execute()
+            except Exception:
+                pass
+        else:
+            _local_delete_meal(username, meal_id)
+        logger.info(f"✓ Meal deleted: {username} ({meal_id})")
         return JSONResponse({"success": True})
 
     except Exception as e:
@@ -1614,7 +1737,7 @@ async def delete_meal(request: Request, meal_id: str):
 # FOOD / NUTRITION DATABASE
 # ══════════════════════════════════════════════
 
-_FOOD_DB: list | None = None
+_FOOD_DB: Optional[list] = None
 _FOOD_INDEX: dict = {}
 
 _NUTRIENT_MAP = {

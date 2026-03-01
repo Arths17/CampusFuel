@@ -17,5 +17,15 @@
     "id": 4,
     "username": "Bobby",
     "password": "$2b$12$8F8xmTqLXeKFAUm37QenXevnM4OVdGJrXzBujFkevVOGOTyB6pK5u"
+  },
+  {
+    "id": "10c45e23-afba-4fa0-b719-71445ff5a669",
+    "username": "testuser99",
+    "password": "$2b$12$wRGP/mtyXwVL5QPsO8nq/ej8qafmJzz0/eRGqpXoTkU9LsLIe1DLe"
+  },
+  {
+    "id": "4f30ce82-b25a-4caa-9e19-192ac9559f87",
+    "username": "aaaa",
+    "password": "$2b$12$izxo2PFPzvFx/QWh1qt6DOTE.sAf5PVF12MmY4t1nN8G8jg2vZt2W"
   }
 ]
