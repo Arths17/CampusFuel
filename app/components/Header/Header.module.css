@@ -86,6 +86,12 @@
   box-shadow: 0 4px 12px rgba(20, 90, 50, 0.3);
 }
 
+.avatarLink {
+  display: flex;
+  text-decoration: none;
+  color: inherit;
+}
+
 .avatar {
   width: 44px;
   height: 44px;

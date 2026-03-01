@@ -1,3 +1,4 @@
+import Link from "next/link";
 import styles from "./Header.module.css";
 
 export default function Header({ title = "Dashboard", username = "" }) {
@@ -27,9 +28,11 @@ export default function Header({ title = "Dashboard", username = "" }) {
           />
         </div>
         <button className={styles.addBtn}>+ Log Meal</button>
-        <div className={styles.avatar}>
-          <span>{initials}</span>
-        </div>
+        <Link href="/Profile Page" className={styles.avatarLink}>
+          <div className={styles.avatar}>
+            <span>{initials}</span>
+          </div>
+        </Link>
       </div>
     </header>
   );
