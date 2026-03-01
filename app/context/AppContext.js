@@ -219,21 +219,21 @@ export function AppProvider({ children }) {
       return;
     }
 
-    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
-    if (!token) {
+    setLoading(true);
+    fetchUserData();
+  }, [pathname, router]);
+
+  const fetchUserData = async (token) => {
+    const resolvedToken = token || localStorage.getItem("token") || sessionStorage.getItem("token");
+    if (!resolvedToken) {
       router.push("/login");
       setLoading(false);
       return;
     }
-
-    fetchUserData(token);
-  }, [pathname, router]);
-
-  const fetchUserData = async (token) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/me`, {
         headers: {
-          "Authorization": `Bearer ${token}`,
+          "Authorization": `Bearer ${resolvedToken}`,
           "ngrok-skip-browser-warning": "true"
         }
       });
@@ -250,14 +250,14 @@ export function AppProvider({ children }) {
 
       setUser({
         username: data.username,
-        token: token
+        token: resolvedToken
       });
       setUserProfile(data.profile || {});
       
       await Promise.all([
-        refreshMealData(token),
-        fetchWaterIntake(token),
-        fetchWorkouts(token),
+        refreshMealData(resolvedToken),
+        fetchWaterIntake(resolvedToken),
+        fetchWorkouts(resolvedToken),
       ]);
     } catch (error) {
       console.error("Failed to fetch user data:", error);
@@ -288,12 +288,11 @@ export function AppProvider({ children }) {
       if (parsed.ok && parsed.data?.success !== false) {
         const serverMeals = parsed.data?.meals || [];
         syncMealState(serverMeals);
-      } else {
-        syncMealState([]);
       }
+      // On error, silently preserve existing meal state rather than wiping it
     } catch (error) {
       console.error("Failed to refresh meals:", error);
-      syncMealState([]);
+      // Don't wipe existing meals on network/parse errors
     } finally {
       setMealsLoading(false);
     }
@@ -437,6 +436,14 @@ export function AppProvider({ children }) {
     const token = user?.token;
     if (!token) return { success: false, error: "Not authenticated" };
 
+    // Optimistic update: add meal to local state immediately
+    const optimisticMeal = {
+      ...mealData,
+      id: mealData.id || mealData.timestamp,
+    };
+    const previousMeals = allMeals;
+    syncMealState([optimisticMeal, ...allMeals]);
+
     try {
       const response = await fetch(`${API_BASE_URL}/api/meals`, {
         method: 'POST',
@@ -450,12 +457,17 @@ export function AppProvider({ children }) {
       const parsed = await parseApiResponse(response, "Failed to save meal");
       
       if (parsed.ok && parsed.data?.success !== false) {
-        await refreshMealData(token);
+        // Sync with server to get authoritative data (non-blocking, errors don't wipe state)
+        refreshMealData(token).catch(() => {});
         return { success: true };
       }
+      // Rollback optimistic update on failure
+      syncMealState(previousMeals);
       return { success: false, error: parsed.error || "Failed to save meal" };
     } catch (error) {
       console.error("Failed to add meal:", error);
+      // Rollback optimistic update on exception
+      syncMealState(previousMeals);
       return { success: false, error: error.message };
     }
   };
