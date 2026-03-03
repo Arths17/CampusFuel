@@ -1,8 +1,7 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
-
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 const AppContext = createContext();
@@ -331,32 +330,30 @@ export function AppProvider({ children }) {
     return allMeals.filter((meal) => meal.date === date);
   };
 
-  const fetchWeeklyMeals = async () => {
-    await refreshMealData();
-  };
+ const fetchWeeklyMeals = useCallback(async () => {
+  if (!user?.id) return;
 
-  const fetchWaterIntake = async (token) => {
-    const userToken = token || user?.token;
-    if (!userToken) return;
+  setMealsLoading(true);
 
-    const date = new Date().toISOString().split("T")[0];
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/water?date=${date}`, {
-        headers: {
-          "Authorization": `Bearer ${userToken}`,
-          "ngrok-skip-browser-warning": "true"
-        }
-      });
-      const parsed = await parseApiResponse(response, "Failed to load water intake");
-      if (parsed.ok && parsed.data?.success !== false) {
-        setWaterIntakeState(Number(parsed.data?.glasses || 0));
-        return;
-      }
-      setWaterIntakeState(0);
-    } catch {
-      setWaterIntakeState(0);
-    }
-  };
+  try {
+    const res = await fetch(`/api/meals?userId=${user.id}`);
+    const data = await res.json();
+
+    // 🔥 Always store an array
+    const mealsArray =
+      Array.isArray(data) ? data :
+      Array.isArray(data?.meals) ? data.meals :
+      [];
+
+    setWeeklyMeals(mealsArray);
+
+  } catch (err) {
+    console.error("Failed to fetch meals:", err);
+    setWeeklyMeals([]);
+  } finally {
+    setMealsLoading(false);
+  }
+}, [user?.id]);
 
   const saveWaterIntake = async (glasses) => {
     const token = user?.token;
@@ -391,31 +388,33 @@ export function AppProvider({ children }) {
     }
   };
 
-  const fetchWorkouts = async (token) => {
-    const userToken = token || user?.token;
-    if (!userToken) return;
+  const fetchWorkouts = useCallback(async () => {
+  const token = user?.token;
+  if (!token) return;
 
-    setWorkoutsLoading(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/workouts`, {
-        headers: {
-          "Authorization": `Bearer ${userToken}`,
-          "ngrok-skip-browser-warning": "true"
-        }
-      });
-      const parsed = await parseApiResponse(response, "Failed to load workouts");
-      if (parsed.ok && parsed.data?.success !== false) {
-        setWorkouts(parsed.data?.workouts || []);
-      } else {
-        setWorkouts([]);
+  setWorkoutsLoading(true);
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/workouts`, {
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "ngrok-skip-browser-warning": "true"
       }
-    } catch {
-      setWorkouts([]);
-    } finally {
-      setWorkoutsLoading(false);
-    }
-  };
+    });
 
+    const parsed = await parseApiResponse(response, "Failed to load workouts");
+
+    if (parsed.ok && parsed.data?.success !== false) {
+      setWorkouts(parsed.data?.workouts || []);
+    } else {
+      setWorkouts([]);
+    }
+  } catch {
+    setWorkouts([]);
+  } finally {
+    setWorkoutsLoading(false);
+  }
+}, [user]);
   const addWorkout = async (workoutData) => {
     const token = user?.token;
     if (!token) return { success: false, error: "Not authenticated" };
@@ -577,6 +576,37 @@ export function AppProvider({ children }) {
     });
     router.push("/login");
   };
+const fetchWaterIntake = useCallback(async (token) => {
+  const userToken = token || user?.token;
+  if (!userToken) return;
+
+  const date = new Date().toISOString().split("T")[0];
+
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/api/water?date=${date}`,
+      {
+        headers: {
+          Authorization: `Bearer ${userToken}`,
+          "ngrok-skip-browser-warning": "true",
+        },
+      }
+    );
+
+    const parsed = await parseApiResponse(
+      response,
+      "Failed to load water intake"
+    );
+
+    if (parsed.ok && parsed.data?.success !== false) {
+      setWaterIntakeState(Number(parsed.data?.glasses || 0));
+    } else {
+      setWaterIntakeState(0);
+    }
+  } catch {
+    setWaterIntakeState(0);
+  }
+}, [user]);
 
   const value = {
     user,

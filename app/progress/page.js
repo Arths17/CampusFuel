@@ -6,7 +6,6 @@ import { useApp } from "../context/AppContext";
 import CampusFuelNav from "../components/Navbar/CampusFuelNav";
 import Header from "../components/Header/Header";
 import styles from "./progress.module.css";
-
 import {
   BarChart,
   Bar,
@@ -54,7 +53,7 @@ export default function ProgressPage() {
     }
   }, [user, fetchWeeklyMeals, fetchWorkouts]);
 
-  const weeklyData = weeklyMeals.map((dayData) => {
+  const weeklyData = (weeklyMeals || []).map((dayData) => {
     const date = new Date(dayData.date);
     const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const workoutCount = workouts.filter(
