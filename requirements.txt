@@ -1,15 +1,26 @@
+# Web framework
 fastapi>=0.104.0
-uvicorn>=0.24.0
+
+# ASGI server
+uvicorn[standard]>=0.24.0
+
+# File uploads support
 python-multipart>=0.0.6
+
+# Environment variable management
 python-dotenv>=1.0.0
+
+# Authentication
 PyJWT>=2.8.0
 bcrypt>=4.1.0
+
+# Database / Supabase client
 supabase>=2.0.0
+httpx>=0.25.0  # required by supabase client for async requests
+
+# Machine learning / data
 scikit-learn>=1.3.0
 numpy>=1.24.0
-httpx>=0.25.0
-npm >=9.0.0
 
-
-
-
+# Optional: Node.js requirement (not a Python package)
+# npm >=9.0.0  # Note: npm is not installed via pip, manage separately
