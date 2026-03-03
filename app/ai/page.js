@@ -143,7 +143,7 @@ async function sendChatMessage(message, onChunk) {
       const { done, value } = await reader.read();
       if (done) break;
 
-      const chunk = decoder.decode(value, { stream: true });
+      const chunk = decoder.decode(value, { stream: false });
       fullText += chunk;
 
       if (onChunk) {

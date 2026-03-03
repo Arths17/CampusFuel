@@ -19,7 +19,7 @@ import sys
 import json
 import bcrypt
 import httpx
-import jwt as _jwt
+import jwt
 import logging
 from typing import cast as _cast, Optional
 from datetime import datetime
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 SECRET = os.environ.get("SECRET_KEY", "elden_ring")
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3:latest")
 
 # --- Supabase (optional) ---
 try:
@@ -310,7 +310,7 @@ def _make_token(username: str, user_id: Optional[str] = None) -> str:
         payload = {"username": username}
         if user_id is not None:
             payload["user_id"] = user_id
-        return _jwt.encode(payload, SECRET, algorithm="HS256")
+        return jwt.encode(payload, SECRET, algorithm="HS256")
     except Exception as e:
         logger.error(f"Token creation failed: {e}")
         raise InternalServerError("Failed to create authentication token") if USE_API_UTILS else Exception("Token creation failed")
@@ -328,11 +328,11 @@ def _decode_token(request: Request) -> Optional[dict]:
     
     token = auth[7:]  # Remove "Bearer " prefix
     try:
-        return _jwt.decode(token, SECRET, algorithms=["HS256"])
-    except _jwt.ExpiredSignatureError:
+        return jwt.decode(token, SECRET, algorithms=["HS256"])
+    except jwt.ExpiredSignatureError:
         logger.warning("Expired token presented")
         return None
-    except _jwt.InvalidTokenError:
+    except jwt.InvalidTokenError:
         logger.warning("Invalid token presented")
         return None
     except Exception as e:
@@ -1395,8 +1395,8 @@ async def chat(request: Request):
                 ]
 
                 with httpx.Client(timeout=120.0) as client:
-                    with client.stream("POST", f"{OLLAMA_URL}/api/chat",
-                        json={"model": OLLAMA_MODEL, "messages": messages, "stream": True},
+                    with client.stream("POST", f"{OLLAMA_URL}/api/generate",
+                        json={"model": OLLAMA_MODEL, "messages": messages[-1]["content"], "stream": True},
                     ) as resp:
                         resp.raise_for_status()
                         for line in resp.iter_lines():
@@ -1834,7 +1834,7 @@ async def nutrition_search(request: Request, q: str = "", limit: int = 20):
     if not token:
         return JSONResponse({"success": False, "error": "Unauthorized"}, status_code=401)
     try:
-        _jwt.decode(token, SECRET, algorithms=["HS256"])
+        jwt.decode(token, SECRET, algorithms=["HS256"])
     except Exception:
         return JSONResponse({"success": False, "error": "Invalid token"}, status_code=401)
     q = q.strip()
@@ -1865,7 +1865,7 @@ async def nutrition_food_detail(fdc_id: str, request: Request):
     if not token:
         return JSONResponse({"success": False, "error": "Unauthorized"}, status_code=401)
     try:
-        _jwt.decode(token, SECRET, algorithms=["HS256"])
+        jwt.decode(token, SECRET, algorithms=["HS256"])
     except Exception:
         return JSONResponse({"success": False, "error": "Invalid token"}, status_code=401)
     _load_food_db()

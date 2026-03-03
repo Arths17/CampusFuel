@@ -125,7 +125,7 @@ export default function ProgressPage() {
               </>
             )}
           </div>
-
+          }
           {/* Charts Section */}
           <div className={styles.chartsSection}>
             <div className={styles.chartCard}>

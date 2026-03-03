@@ -9,7 +9,7 @@ import re
 import json
 import textwrap
 import sys
-import google.generativeai as genai
+import google.genai as genai
 from datetime import datetime
 # Add model/ directory to path so we can import nutrition_db / user_state
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
