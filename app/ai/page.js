@@ -337,7 +337,6 @@ export default function AIPage() {
   async function sendMessage() {
     const text = input.trim();
     if (!text || loading) return;
-
     const userMsg = { role: "user", content: text };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
@@ -534,7 +533,7 @@ export default function AIPage() {
               {loading ? "..." : "Send"}
             </button>
           </div>
-        </div>
+        </div>  
         {/* Page Footer */}
         <footer className={styles.pageFooter}>
           <span>🌿 CampusFuel</span>
